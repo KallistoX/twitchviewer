@@ -59,12 +59,16 @@ parts:
       - qtbase5-dev-tools
       - qtdeclarative5-dev
       - qtquickcontrols2-5-dev
+      - qtmultimedia5-dev
       - intltool
-      - libmpv-dev
-      - pkg-config
 
     stage-packages:
-      - libmpv2
+      - libqt5multimedia5
+      - libqt5multimedia5-plugins
+      - gstreamer1.0-plugins-base
+      - gstreamer1.0-plugins-good
+      - gstreamer1.0-plugins-bad
+      - gstreamer1.0-libav
 
     override-prime: |
         craftctl default

@@ -1,4 +1,9 @@
 {
-    "policy_groups": [],
+    "policy_groups": [
+        "networking",
+        "audio",
+        "video",
+        "webview"
+    ],
     "policy_version": 20.04
 }
