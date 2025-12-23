@@ -60,11 +60,13 @@ parts:
       - qtdeclarative5-dev
       - qtquickcontrols2-5-dev
       - qtmultimedia5-dev
+      - libqt5network5
       - intltool
 
     stage-packages:
       - libqt5multimedia5
       - libqt5multimedia5-plugins
+      - libqt5network5
       - gstreamer1.0-plugins-base
       - gstreamer1.0-plugins-good
       - gstreamer1.0-plugins-bad

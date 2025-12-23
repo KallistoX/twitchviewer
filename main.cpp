@@ -19,6 +19,8 @@
 #include <QUrl>
 #include <QString>
 #include <QQuickView>
+#include <QQmlContext>
+#include "twitchstreamfetcher.h"
 
 int main(int argc, char *argv[])
 {
@@ -27,7 +29,14 @@ int main(int argc, char *argv[])
 
     qDebug() << "Starting app from main.cpp";
 
+    // Create Twitch stream fetcher
+    TwitchStreamFetcher *streamFetcher = new TwitchStreamFetcher(app);
+
     QQuickView *view = new QQuickView();
+    
+    // Make TwitchStreamFetcher available in QML
+    view->rootContext()->setContextProperty("twitchFetcher", streamFetcher);
+    
     view->setSource(QUrl("qrc:/Main.qml"));
     view->setResizeMode(QQuickView::SizeRootObjectToView);
     view->show();

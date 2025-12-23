@@ -16,6 +16,7 @@
 
 import QtQuick 2.7
 import QtMultimedia 5.8
+import QtQuick.Controls 2.2
 import Lomiri.Components 1.3
 import QtQuick.Layouts 1.3
 import Qt.labs.settings 1.0
@@ -28,6 +29,43 @@ MainView {
 
     width: units.gu(45)
     height: units.gu(75)
+    
+    Component.onCompleted: {
+        console.log("MainView loaded")
+        console.log("twitchFetcher exists:", typeof twitchFetcher !== 'undefined')
+        if (typeof twitchFetcher !== 'undefined') {
+            console.log("twitchFetcher is valid")
+        } else {
+            console.error("twitchFetcher is NOT available!")
+        }
+    }
+
+    // Connections to TwitchStreamFetcher signals
+    Connections {
+        target: twitchFetcher
+    ignoreUnknownSignals: true
+        
+    onStreamUrlReady: {
+        console.log("QML received streamUrlReady signal")
+        console.log("URL:", url)
+        console.log("Channel:", channelName)
+        statusLabel.text = "Starting playback..."
+            videoPlayer.source = url
+            videoPlayer.play()
+        }
+        
+    onError: {
+        console.error("QML received error signal:", message)
+            statusLabel.text = "Error: " + message
+            statusLabel.color = theme.palette.normal.negative
+        }
+        
+    onStatusUpdate: {
+        console.log("QML received statusUpdate signal:", status)
+            statusLabel.text = status
+            statusLabel.color = theme.palette.normal.backgroundSecondaryText
+        }
+    }
 
     Page {
         id: mainPage
@@ -37,9 +75,6 @@ MainView {
             id: header
             title: i18n.tr('TwitchViewer')
         }
-        
-        // Hardcoded test URL - replace with your streamlink output
-        property string testStreamUrl: "https://euc11.playlist.ttvnw.net/v1/playlist/CuoEXu6jIXeKXAKrIwrs2s4rb8Zgs3iMDaN2Fyb_sGe1wrPBbh_yBTi-_S4iZ3lLHB1tBFPAMzfW-YK-gBDswToRokySWzY3eytO5xfZGTl_TQiHDm4s_tfVZY1wTkyXmOHQUlvkPr68P_ZmTqvCUCesh8PaSTzDKPcBReAsFDT4O5LrOAm7LynuBZnvIxEfSfz8eVU35xm82S_1mlj7S585sfOFnw5zypSq8QlXeeIJg8ysoCpceoqgw4d-vgGkfZcsRez3-FN2LinkT1NBOMfwIneMXkT0ahiNGj7r5-WZ63y3Ig4T5byrO7ssRU9kyfo3G0hNZzPqLhng7fdnZtf6927W1yy61bgXTZAbOmGeYy6V0QlJChYAoZYFmznkWMxviX8YvklQ4rtIjIeyqWuHajck3f87AigtPtyZD1iHaOt-5HPMG7iOxLwqf4yvDFFWxGyfqWJ13zKbUBcELssnQHoQ7QqVKpfcahzqM1xmaYqzplVsD1dz_BXyTHS1o66QYpsDqeiAIKGA8COSKHRKY4poIYzzA8iTjTcqcJhRWCsVjRnddfpjynxOO9gRWk7BAmgnGbLGvIFS3eZ_XcJojelJ7N7LXYDwMx4g5VYxr9iOhVqmLLLNUJiDSQ5ILWUwBH4VxphS0WhnwvmOa1o8t149Jh4Cg9gUWye7SnOzqotG-hyOlzIFKoZoGeAP5-iWJX0TqJKwT45Sl8yCVHQlzWkziBRt7Jyj6FzJDa45-3KZLjfZoGRdRza6xkOyOToMwJkkIfgpznGfwZ3p_6ZiA4be0YRfGBqldfRClmVrCyaz-cCqgJdL-fYHGgxlDKbCkrTWFR1cioIgASoJZXUtd2VzdC0yMIIO.m3u8"
 
         Flickable {
             id: flickable
@@ -56,7 +91,6 @@ MainView {
             property real keyboardHeight: Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height : 0
             onKeyboardHeightChanged: {
                 if (keyboardHeight > 0) {
-                    // Scroll to show the text field
                     contentY = Math.max(0, contentHeight - height + keyboardHeight)
                 }
             }
@@ -87,10 +121,23 @@ MainView {
                             console.log("Video status:", status)
                             if (status === MediaPlayer.InvalidMedia) {
                                 statusLabel.text = "Error: Invalid media"
+                                statusLabel.color = theme.palette.normal.negative
                             } else if (status === MediaPlayer.NoMedia) {
-                                statusLabel.text = "Ready"
+                                statusLabel.text = i18n.tr('Enter a channel name to start')
+        } else if (status === MediaPlayer.LoadedMedia) {
+            console.log("Media loaded successfully")
                             }
                         }
+                        
+    // In QtMultimedia 5.8, use onErrorChanged instead of onError
+    onErrorChanged: {
+        if (error !== MediaPlayer.NoError) {
+                            console.error("Video error:", errorString)
+                            statusLabel.text = "Video error: " + errorString
+                            statusLabel.color = theme.palette.normal.negative
+                        }
+                    }
+
                     }
 
                     // Status overlay
@@ -105,32 +152,33 @@ MainView {
                             else if (videoPlayer.status === MediaPlayer.Loading || videoPlayer.status === MediaPlayer.Buffering)
                                 return i18n.tr('Loading...')
                             else
-                                return i18n.tr('Ready')
+                                return i18n.tr('Enter a channel name to start')
                         }
                         color: "white"
                         visible: videoPlayer.playbackState !== MediaPlayer.PlayingState
                         font.pixelSize: units.gu(3)
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                        width: parent.width - units.gu(4)
                     }
                 }
 
-                // URL Input
+                // Channel Name Input
                 TextField {
-                    id: urlInput
+                    id: channelInput
                     Layout.fillWidth: true
-                    placeholderText: i18n.tr('Enter direct video URL...')
+                    placeholderText: i18n.tr('Enter Twitch channel name (e.g. esl_csgo)')
                     text: ""
                     
-                    // Disable autocorrect and predictive text for URLs
                     inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhUrlCharactersOnly
                     
                     onAccepted: {
                         if (text.length > 0) {
-                            videoPlayer.source = text
-                            videoPlayer.play()
+                            statusLabel.text = "Fetching stream..."
+                            twitchFetcher.fetchStreamUrl(text, "best")
                         }
                     }
                     
-                    // Focus handling
                     onActiveFocusChanged: {
                         if (activeFocus) {
                             flickable.contentY = Math.max(0, y - units.gu(5))
@@ -138,16 +186,24 @@ MainView {
                     }
                 }
 
-                // Test Button for hardcoded Twitch stream
-                Button {
+                // Quality selector
+                RowLayout {
                     Layout.fillWidth: true
-                    text: i18n.tr('🧪 Test Twitch Stream')
-                    color: theme.palette.normal.activity
-                    visible: mainPage.testStreamUrl !== "PASTE_YOUR_M3U8_URL_HERE"
-                    onClicked: {
-                        urlInput.text = mainPage.testStreamUrl
-                        videoPlayer.source = mainPage.testStreamUrl
-                        videoPlayer.play()
+                    spacing: units.gu(1)
+
+                    Label {
+                        text: i18n.tr('Quality:')
+                        Layout.preferredWidth: units.gu(10)
+                    }
+
+                    ComboBox {
+                        id: qualitySelector
+                        Layout.fillWidth: true
+                        model: ["Best (Auto)", "Source (1080p)", "High (720p)", "Medium (480p)", "Low (360p)"]
+                        currentIndex: 0
+                        
+                        property var qualityValues: ["best", "source", "high", "medium", "low"]
+                        property string selectedQuality: qualityValues[currentIndex]
                     }
                 }
 
@@ -158,40 +214,88 @@ MainView {
 
                     Button {
                         Layout.fillWidth: true
-                        text: i18n.tr('Play')
+                        text: i18n.tr('Watch Stream')
                         color: theme.palette.normal.positive
+                        enabled: channelInput.text.length > 0
                         onClicked: {
-                            if (urlInput.text.length > 0 && videoPlayer.source != urlInput.text) {
-                                videoPlayer.source = urlInput.text
-                            }
-                            videoPlayer.play()
+                            statusLabel.text = "Fetching stream..."
+                            twitchFetcher.fetchStreamUrl(channelInput.text, qualitySelector.selectedQuality)
                         }
                     }
 
                     Button {
                         Layout.fillWidth: true
-                        text: i18n.tr('Pause')
-                        onClicked: videoPlayer.pause()
+                        text: videoPlayer.playbackState === MediaPlayer.PlayingState ? i18n.tr('Pause') : i18n.tr('Resume')
+                        enabled: videoPlayer.source != ""
+                        onClicked: {
+                            if (videoPlayer.playbackState === MediaPlayer.PlayingState) {
+                                videoPlayer.pause()
+                            } else {
+                                videoPlayer.play()
+                            }
+                        }
                     }
 
                     Button {
                         Layout.fillWidth: true
                         text: i18n.tr('Stop')
                         color: theme.palette.normal.negative
-                        onClicked: videoPlayer.stop()
+                        enabled: videoPlayer.source != ""
+                        onClicked: {
+                            videoPlayer.stop()
+                            statusLabel.text = i18n.tr('Enter a channel name to start')
+                        }
+                    }
+                }
+
+                // Quick Channel Buttons
+                Label {
+                    Layout.fillWidth: true
+                    text: i18n.tr('Popular channels:')
+                    fontSize: "small"
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: units.gu(1)
+
+                    Button {
+                        text: "esl_csgo"
+                        onClicked: {
+                            channelInput.text = "esl_csgo"
+                            twitchFetcher.fetchStreamUrl("esl_csgo", qualitySelector.selectedQuality)
+                        }
+                    }
+
+                    Button {
+                        text: "chess"
+                        onClicked: {
+                            channelInput.text = "chess"
+                            twitchFetcher.fetchStreamUrl("chess", qualitySelector.selectedQuality)
+                        }
+                    }
+
+                    Button {
+                        text: "nasa"
+                        onClicked: {
+                            channelInput.text = "nasa"
+                            twitchFetcher.fetchStreamUrl("nasa", qualitySelector.selectedQuality)
+                        }
+                    }
+
+                    Button {
+                        text: "monstercat"
+                        onClicked: {
+                            channelInput.text = "monstercat"
+                            twitchFetcher.fetchStreamUrl("monstercat", qualitySelector.selectedQuality)
+                        }
                     }
                 }
 
                 // Info Label
                 Label {
                     Layout.fillWidth: true
-                    text: {
-                        if (mainPage.testStreamUrl === "PASTE_YOUR_M3U8_URL_HERE") {
-                            return i18n.tr('To test Twitch:\n1. Run: streamlink https://twitch.tv/CHANNEL best --stream-url\n2. Edit Main.qml: Replace testStreamUrl with the m3u8 URL\n3. Rebuild and click the Test button\n\nOr use direct video URLs like:\nhttp://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4')
-                        } else {
-                            return i18n.tr('🧪 Test button loaded with Twitch stream! Click to play.\n\nOr enter any direct video URL (MP4, M3U8).')
-                        }
-                    }
+                    text: i18n.tr('Enter a Twitch channel name and press "Watch Stream" to start.\n\nYou can also try the popular channels above!')
                     wrapMode: Text.WordWrap
                     fontSize: "small"
                     color: theme.palette.normal.backgroundSecondaryText

@@ -1,5 +1,6 @@
 /build/
 /.clickable/
+/test/
 
 # Ubuntu Touch / Clickable Build Artifacts
 build/
