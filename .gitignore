@@ -1,0 +1,85 @@
+/build/
+/.clickable/
+
+# Ubuntu Touch / Clickable Build Artifacts
+build/
+*.click
+*.snap
+install/
+obj-*/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Qt/QML
+*.qmlc
+*.jsc
+*.autosave
+*.qrc.depends
+.qmake.stash
+*.moc
+moc_*.cpp
+qrc_*.cpp
+
+# C++
+*.o
+*.so
+*.a
+*.la
+*.lo
+*.dylib
+*.exe
+*.out
+*.app
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.pro.user
+*.pro.user.*
+
+# Translations (generated)
+*.qm
+po/*.mo
+po/*.pot
+
+# Clickable specific
+.clickable/
+clickable.log
+
+# Manifest (generated from .in file)
+manifest.json
+
+# Desktop file (generated from .in file)
+*.desktop
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+
+# Local configuration
+.env
+*.local
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*_old
+*_backup
+
+# Dependencies
+node_modules/
+vendor/

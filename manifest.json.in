@@ -1,0 +1,15 @@
+{
+    "name": "twitchviewer.kallisto-app",
+    "description": "A small App to view Twitch Streams",
+    "architecture": "@CLICK_ARCH@",
+    "title": "TwitchViewer",
+    "hooks": {
+        "twitchviewer": {
+            "apparmor": "twitchviewer.apparmor",
+            "desktop":  "twitchviewer.desktop"
+        }
+    },
+    "version": "1.0.0",
+    "maintainer": "Dominic Bussemas <dev@bussemas.me>",
+    "framework" : "@CLICK_FRAMEWORK@"
+}
