@@ -16,11 +16,10 @@
 
 import QtQuick 2.7
 import Lomiri.Components 1.3
-//import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 import Qt.labs.settings 1.0
 
-import Example 1.0
+import TwitchPlayer 1.0
 
 MainView {
     id: root
@@ -40,33 +39,84 @@ MainView {
         }
 
         ColumnLayout {
-            spacing: units.gu(2)
+            spacing: units.gu(1)
             anchors {
-                margins: units.gu(2)
+                margins: units.gu(1)
                 top: header.bottom
                 left: parent.left
                 right: parent.right
                 bottom: parent.bottom
             }
 
-            Item {
+            // Video Player Area
+            Rectangle {
+                Layout.fillWidth: true
                 Layout.fillHeight: true
+                color: "black"
+
+                MpvPlayer {
+                    id: videoPlayer
+                    anchors.fill: parent
+                }
+
+                // Status overlay
+                Label {
+                    anchors.centerIn: parent
+                    text: videoPlayer.playing ? i18n.tr('Playing...') : i18n.tr('Ready')
+                    color: "white"
+                    visible: !videoPlayer.playing
+                    font.pixelSize: units.gu(3)
+                }
             }
 
-            Label {
-                id: label
-                Layout.alignment: Qt.AlignHCenter
-                text: i18n.tr('Press the button below and check the logs!')
+            // URL Input
+            TextField {
+                id: urlInput
+                Layout.fillWidth: true
+                placeholderText: i18n.tr('Enter stream URL or Twitch channel name...')
+                text: ""
             }
+
+            // Control Buttons
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: units.gu(1)
 
             Button {
-                Layout.alignment: Qt.AlignHCenter
-                text: i18n.tr('Press here!')
-                onClicked: Example.speak()
+                    Layout.fillWidth: true
+                    text: i18n.tr('Play')
+                    color: theme.palette.normal.positive
+                    onClicked: {
+                        if (urlInput.text.length > 0) {
+                            // For now, just pass the URL directly
+                            // Later we'll add streamlink integration for Twitch URLs
+                            videoPlayer.source = urlInput.text
+                            videoPlayer.play()
+                        }
+                    }
+                }
+
+                Button {
+                    Layout.fillWidth: true
+                    text: i18n.tr('Pause')
+                    onClicked: videoPlayer.pause()
+                }
+
+                Button {
+                    Layout.fillWidth: true
+                    text: i18n.tr('Stop')
+                    color: theme.palette.normal.negative
+                    onClicked: videoPlayer.stop()
+            }
             }
 
-            Item {
-                Layout.fillHeight: true
+            // Info Label
+            Label {
+                Layout.fillWidth: true
+                text: i18n.tr('Test with a direct video URL (e.g., http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)')
+                wrapMode: Text.WordWrap
+                fontSize: "small"
+                color: theme.palette.normal.backgroundSecondaryText
             }
         }
     }

@@ -23,6 +23,8 @@ apps:
     plugs:
       - opengl
       - wayland
+      - network
+      - network-bind
 
 plugs:
   lomiri-ui-toolkit:
@@ -58,6 +60,11 @@ parts:
       - qtdeclarative5-dev
       - qtquickcontrols2-5-dev
       - intltool
+      - libmpv-dev
+      - pkg-config
+
+    stage-packages:
+      - libmpv2
 
     override-prime: |
         craftctl default
