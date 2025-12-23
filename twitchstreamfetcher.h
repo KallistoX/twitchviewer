@@ -25,6 +25,9 @@
  #include <QJsonObject>
  #include <QJsonArray>
  #include <QUrlQuery>
+ #include <QDateTime>
+ #include <QUuid>
+ #include <QSettings>
  
  // Forward declaration
  class TwitchAuthManager;
@@ -81,6 +84,9 @@
      // Handle M3U8 playlist response
      void onPlaylistReceived();
  
+     // Handle Client-Integrity token response
+     void onClientIntegrityReceived();
+ 
  private:
      // Network manager
      QNetworkAccessManager *m_networkManager;
@@ -88,9 +94,17 @@
      // Auth manager reference
      TwitchAuthManager *m_authManager;
      
+     // Settings for token caching
+     QSettings *m_settings;
+     
      // Current request data
      QString m_currentChannel;
      QString m_requestedQuality;
+     
+     // Client-Integrity token (cached)
+     QString m_clientIntegrityToken;
+     QDateTime m_clientIntegrityExpiration;
+     QString m_deviceId;
      
      // Debug info (from last fetch)
      QString m_debugShowAds;
@@ -103,15 +117,23 @@
      
      // Twitch API constants
      static const QString TWITCH_GQL_URL;
+     static const QString TWITCH_INTEGRITY_URL;
      static const QString TWITCH_USHER_URL;
      static const QString PERSISTED_QUERY_HASH;
      
      // Helper methods
-     void requestPlaybackToken(const QString &channelName);
+     void requestPlaybackToken(const QString &channelName, bool withIntegrity = false);
+     void requestClientIntegrity();
      void requestPlaylist(const QString &token, const QString &signature, const QString &channelName);
      QString parseM3U8Playlist(const QString &m3u8Content, const QString &quality);
      QString extractUrlFromM3U8(const QString &m3u8Content, const QString &resolution);
      void parseDebugInfo(const QString &tokenValue);
+     
+     // Client-Integrity helpers
+     void loadClientIntegrity();
+     void saveClientIntegrity();
+     bool isClientIntegrityValid() const;
+     QString getOrCreateDeviceId();
  };
  
  #endif // TWITCHSTREAMFETCHER_H
