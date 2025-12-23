@@ -1,0 +1,45 @@
+/*
+ * Copyright (C) 2025  Dominic Bussemas
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; version 3.
+ *
+ * twitchviewer is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include "config.h"
+
+/**
+ * SETUP INSTRUCTIONS:
+ * 
+ * 1. Copy this file to config.cpp:
+ *    cp config.cpp.example config.cpp
+ * 
+ * 2. Create a Twitch Developer Application:
+ *    - Go to: https://dev.twitch.tv/console/apps
+ *    - Click "Register Your Application"
+ *    - Name: "TwitchViewer for Ubuntu Touch" (or similar)
+ *    - OAuth Redirect URLs: http://localhost
+ *    - Category: Application Integration
+ *    - Client Type: Public
+ * 
+ * 3. Copy your Client ID and paste it below:
+ */
+
+const QString Config::TWITCH_CLIENT_ID = "REPLACE_WITH_YOUR_CLIENT_ID";
+
+/**
+ * IMPORTANT: 
+ * - Never commit config.cpp to Git (it's in .gitignore)
+ * - Only commit config.cpp.example
+ * - For development, you can temporarily use the public client ID:
+ *   "kimne78kx3ncx6brgo4mv6wki5h1ko"
+ *   (but this won't support OAuth login)
+ */

@@ -15,13 +15,14 @@
  */
 
  #include "twitchstreamfetcher.h"
+ #include "twitchauthmanager.h"
+ #include "config.h"
  #include <QNetworkRequest>
  #include <QUrlQuery>
  #include <QUrl>
  #include <QDebug>
  
  // Twitch API Constants
- const QString TwitchStreamFetcher::TWITCH_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko";
  const QString TwitchStreamFetcher::TWITCH_GQL_URL = "https://gql.twitch.tv/gql";
  const QString TwitchStreamFetcher::TWITCH_USHER_URL = "https://usher.ttvnw.net/api/channel/hls/%1.m3u8";
  const QString TwitchStreamFetcher::PERSISTED_QUERY_HASH = "0828119ded1c13477966434e15800ff57ddacf13ba1911c129dc2200705b0712";
@@ -29,11 +30,25 @@
  TwitchStreamFetcher::TwitchStreamFetcher(QObject *parent)
      : QObject(parent)
      , m_networkManager(new QNetworkAccessManager(this))
+     , m_authManager(nullptr)
+     , m_debugShowAds("N/A")
+     , m_debugHideAds("N/A")
+     , m_debugPrivileged("N/A")
+     , m_debugRole("N/A")
+     , m_debugSubscriber("N/A")
+     , m_debugTurbo("N/A")
+     , m_debugAdblock("N/A")
  {
  }
  
  TwitchStreamFetcher::~TwitchStreamFetcher()
  {
+ }
+ 
+ void TwitchStreamFetcher::setAuthManager(TwitchAuthManager *authManager)
+ {
+     m_authManager = authManager;
+     qDebug() << "TwitchStreamFetcher: Auth manager set";
  }
  
  void TwitchStreamFetcher::fetchStreamUrl(const QString &channelName, const QString &quality)
@@ -52,7 +67,21 @@
     QUrl url(TWITCH_GQL_URL);
     QNetworkRequest request(url);
      request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-     request.setRawHeader("Client-ID", TWITCH_CLIENT_ID.toUtf8());
+     
+     // Use Twitch's public Client-ID for GraphQL API (same as web browser)
+     request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
+     
+     // Add Authorization header if authenticated
+     if (m_authManager && m_authManager->isAuthenticated()) {
+         QString authHeader = QString("OAuth %1").arg(m_authManager->accessToken());
+         request.setRawHeader("Authorization", authHeader.toUtf8());
+         qDebug() << "Using authenticated request";
+         qDebug() << "Auth header:" << authHeader.left(20) << "... (length:" << authHeader.length() << ")";
+     } else {
+         qDebug() << "Using anonymous request";
+     }
+     
+     qDebug() << "Client-ID:" << Config::TWITCH_PUBLIC_CLIENT_ID;
      
      // Build GraphQL query using persisted query
      QJsonObject variables;
@@ -78,6 +107,7 @@
      QByteArray data = doc.toJson(QJsonDocument::Compact);
      
      qDebug() << "Sending GraphQL request...";
+     qDebug() << "Request size:" << data.size() << "bytes";
      
      QNetworkReply *reply = m_networkManager->post(request, data);
      connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onPlaybackTokenReceived);
@@ -134,10 +164,46 @@
          return;
      }
      
+     // Parse debug info from token
+     parseDebugInfo(token);
+     
      qDebug() << "Got token and signature, fetching playlist...";
      emit statusUpdate("Getting stream playlist...");
      
      requestPlaylist(token, signature, m_currentChannel);
+ }
+ 
+ void TwitchStreamFetcher::parseDebugInfo(const QString &tokenValue)
+ {
+     // Token value is a JSON string, parse it
+     QJsonDocument doc = QJsonDocument::fromJson(tokenValue.toUtf8());
+     if (doc.isNull() || !doc.isObject()) {
+         qDebug() << "Could not parse token for debug info";
+         return;
+     }
+     
+     QJsonObject obj = doc.object();
+     
+     // Extract debug fields
+     m_debugShowAds = obj["show_ads"].toBool() ? "true" : "false";
+     m_debugHideAds = obj["hide_ads"].toBool() ? "true" : "false";
+     m_debugPrivileged = obj["privileged"].toBool() ? "true" : "false";
+     m_debugRole = obj["role"].toString();
+     m_debugSubscriber = obj["subscriber"].toBool() ? "true" : "false";
+     m_debugTurbo = obj["turbo"].toBool() ? "true" : "false";
+     m_debugAdblock = obj["adblock"].toBool() ? "true" : "false";
+     
+     qDebug() << "=== Debug Info ===";
+     qDebug() << "Show Ads:" << m_debugShowAds;
+     qDebug() << "Hide Ads:" << m_debugHideAds;
+     qDebug() << "Privileged:" << m_debugPrivileged;
+     qDebug() << "Role:" << m_debugRole;
+     qDebug() << "Subscriber:" << m_debugSubscriber;
+     qDebug() << "Turbo:" << m_debugTurbo;
+     qDebug() << "Adblock:" << m_debugAdblock;
+     qDebug() << "==================";
+     
+     emit debugInfoChanged();
  }
  
  void TwitchStreamFetcher::requestPlaylist(const QString &token, const QString &signature, const QString &channelName)
@@ -146,7 +212,7 @@
      QString usherUrl = TWITCH_USHER_URL.arg(channelName);
      
      QUrlQuery query;
-     query.addQueryItem("client_id", TWITCH_CLIENT_ID);
+     query.addQueryItem("client_id", Config::TWITCH_PUBLIC_CLIENT_ID);
      query.addQueryItem("token", token);
      query.addQueryItem("sig", signature);
      query.addQueryItem("allow_source", "true");

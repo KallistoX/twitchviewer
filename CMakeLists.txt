@@ -53,8 +53,12 @@ qt5_add_resources(QT_RESOURCES assets/assets.qrc)
 # Add source files
 set(PROJECT_SOURCES
     main.cpp
+    config.cpp
     twitchstreamfetcher.cpp
     twitchstreamfetcher.h
+    twitchauthmanager.cpp
+    twitchauthmanager.h
+    config.h
 )
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES} ${QT_RESOURCES})

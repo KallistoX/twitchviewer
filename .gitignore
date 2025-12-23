@@ -84,3 +84,6 @@ __pycache__/
 # Dependencies
 node_modules/
 vendor/
+
+# Config
+config.cpp
