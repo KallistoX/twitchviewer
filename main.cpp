@@ -40,9 +40,27 @@ int main(int argc, char *argv[])
     streamFetcher->setAuthManager(authManager);
     qDebug() << "TwitchStreamFetcher created and auth manager linked";
 
-    // Create Helix API client
+    // Create Helix API
     TwitchHelixAPI *helixApi = new TwitchHelixAPI(app);
     qDebug() << "TwitchHelixAPI created";
+
+    // Sync OAuth token to Helix API
+    QObject::connect(authManager, &TwitchAuthManager::authenticationChanged, 
+        [helixApi, authManager](bool authenticated) {
+            if (authenticated) {
+                helixApi->setAuthToken(authManager->accessToken());
+                qDebug() << "✅ Helix API: OAuth token set";
+            } else {
+                helixApi->setAuthToken("");
+                qDebug() << "Helix API: OAuth token cleared";
+            }
+        });
+
+    // Set initial token if already authenticated
+    if (authManager->isAuthenticated()) {
+        helixApi->setAuthToken(authManager->accessToken());
+        qDebug() << "✅ Helix API: Initial OAuth token set";
+    }
 
     QQuickView *view = new QQuickView();
     

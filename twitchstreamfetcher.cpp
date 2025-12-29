@@ -759,7 +759,7 @@ QString TwitchStreamFetcher::getQualityUrl(const QString &quality) const
      return QString();
  }
 
- // ========================================
+// ========================================
 // User Info Methods - TWO STEP APPROACH
 // ========================================
 
@@ -812,13 +812,32 @@ void TwitchStreamFetcher::requestUserInfo()
 
 void TwitchStreamFetcher::requestUserDetails(const QString &userId)
 {
-    // Use Twitch Helix REST API instead of GetUserByConnection
+    // Use Twitch Helix REST API
     QUrl url(QString("https://api.twitch.tv/helix/users?id=%1").arg(userId));
     QNetworkRequest request(url);
     
-    // Use public Client-ID and GraphQL token
+    // Use public Client-ID
     request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
-    request.setRawHeader("Authorization", QString("Bearer %1").arg(m_graphQLToken).toUtf8());
+    
+    // ⭐ GEÄNDERT: Try OAuth token first (has user:read:email scope), fallback to GraphQL token
+    QString token;
+    if (m_authManager && m_authManager->isAuthenticated()) {
+        token = m_authManager->accessToken();
+        qDebug() << "Using OAuth token for user info (has user:read:email scope)";
+    } else if (!m_graphQLToken.isEmpty()) {
+        token = m_graphQLToken;
+        qDebug() << "Using GraphQL token for user info";
+    } else {
+        qWarning() << "No token available for user info request";
+        if (m_isValidatingToken) {
+            m_isValidatingToken = false;
+            emit validatingTokenChanged();
+            emit tokenValidationFailed("No authentication token available");
+        }
+        return;
+    }
+    
+    request.setRawHeader("Authorization", QString("Bearer %1").arg(token).toUtf8());
     
     qDebug() << "Fetching user details via Helix API (step 2) for user ID:" << userId;
     

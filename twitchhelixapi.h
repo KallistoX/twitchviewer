@@ -90,6 +90,9 @@ public:
      */
     Q_INVOKABLE void getUserInfo(const QString &userLogin);
 
+    //Set OAuth token for authenticated requests
+    void setAuthToken(const QString &token) { m_authToken = token; }
+
 signals:
     // Top Games response
     void topGamesReceived(const QJsonArray &games);
@@ -118,6 +121,7 @@ private slots:
 
 private:
     QNetworkAccessManager *m_networkManager;
+    QString m_authToken;
     
     // Twitch Helix API
     static const QString HELIX_BASE_URL;

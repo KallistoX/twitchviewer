@@ -407,6 +407,38 @@ MainView {
                 property string channelName: ""
                 property string requestedQuality: "best"
                 property string currentStreamUrl: ""
+                property string currentQuality: "Best"
+                
+                ListModel {
+                    id: availableQualities
+                }
+                
+                function switchQuality(qualityName) {
+                    console.log("Switching quality to:", qualityName)
+                    
+                    // Get URL for this quality
+                    var qualityUrl = twitchFetcher.getQualityUrl(qualityName)
+                    
+                    if (qualityUrl === "") {
+                        console.error("No URL found for quality:", qualityName)
+                        return
+                    }
+                    
+                    console.log("Quality URL:", qualityUrl.substring(0, 80) + "...")
+                    
+                    // Remember current position
+                    var wasPlaying = videoPlayer.playbackState === MediaPlayer.PlayingState
+                    
+                    // Switch source
+                    videoPlayer.source = qualityUrl
+                    currentStreamUrl = qualityUrl
+                    currentQuality = qualityName
+                    
+                    // Resume if was playing
+                    if (wasPlaying) {
+                        videoPlayer.play()
+                    }
+                }
                 
                 header: PageHeader {
                     id: playerHeader
@@ -457,6 +489,7 @@ MainView {
                 
                 // Video player (fullscreen)
                 Rectangle {
+                    id: playerContainer
                     anchors {
                         top: playerHeader.bottom
                         left: parent.left
@@ -538,6 +571,96 @@ MainView {
                             }
                         }
                     }
+                    
+                    // Quality selector button (bottom right)
+                    Rectangle {
+                        id: qualityButton
+                        anchors {
+                            right: parent.right
+                            bottom: parent.bottom
+                            margins: units.gu(2)
+                        }
+                        width: units.gu(12)
+                        height: units.gu(4)
+                        color: theme.palette.normal.background
+                        opacity: 0.9
+                        radius: units.gu(0.5)
+                        visible: availableQualities.count > 0 && videoPlayer.playbackState === MediaPlayer.PlayingState
+                        
+                        Label {
+                            anchors.centerIn: parent
+                            text: currentQuality
+                            font.bold: true
+                        }
+                        
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: qualityPopup.visible = !qualityPopup.visible
+                        }
+                    }
+                    
+                    // Quality popup menu
+                    Rectangle {
+                        id: qualityPopup
+                        anchors {
+                            right: qualityButton.right
+                            bottom: qualityButton.top
+                            bottomMargin: units.gu(1)
+                        }
+                        width: units.gu(20)
+                        height: Math.min(qualityList.contentHeight + units.gu(2), playerContainer.height * 0.6)
+                        color: theme.palette.normal.background
+                        radius: units.gu(1)
+                        border.color: theme.palette.normal.base
+                        border.width: units.dp(1)
+                        visible: false
+                        
+                        Column {
+                            anchors {
+                                fill: parent
+                                margins: units.gu(1)
+                            }
+                            
+                            Label {
+                                text: i18n.tr("Quality")
+                                font.bold: true
+                                width: parent.width
+                            }
+                            
+                            ListView {
+                                id: qualityList
+                                width: parent.width
+                                height: parent.height - units.gu(4)
+                                clip: true
+                                model: availableQualities
+                                
+                                delegate: Rectangle {
+                                    width: parent.width
+                                    height: units.gu(5)
+                                    color: currentQuality === model.name ? theme.palette.normal.positive : "transparent"
+                                    
+                                    Label {
+                                        anchors {
+                                            left: parent.left
+                                            leftMargin: units.gu(1)
+                                            verticalCenter: parent.verticalCenter
+                                        }
+                                        text: model.name
+                                        color: currentQuality === model.name ? "white" : theme.palette.normal.baseText
+                                    }
+                                    
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            console.log("Switching to quality:", model.name)
+                                            switchQuality(model.name)
+                                            qualityPopup.visible = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 
                 // Connections to TwitchStreamFetcher
@@ -552,6 +675,20 @@ MainView {
                             statusLabel.text = "Starting playback..."
                             videoPlayer.source = url
                             videoPlayer.play()
+                        }
+                    }
+                    
+                    onAvailableQualitiesChanged: {
+                        console.log("Available qualities:", qualities)
+                        availableQualities.clear()
+                        
+                        for (var i = 0; i < qualities.length; i++) {
+                            availableQualities.append({ name: qualities[i] })
+                        }
+                        
+                        // Set initial quality label
+                        if (qualities.length > 0) {
+                            currentQuality = qualities[0]
                         }
                     }
                     

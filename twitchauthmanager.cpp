@@ -30,8 +30,8 @@
  const QString TwitchAuthManager::TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token";
  const QString TwitchAuthManager::TWITCH_VALIDATE_URL = "https://id.twitch.tv/oauth2/validate";
  
- // OAuth scopes we need
- const QString TwitchAuthManager::OAUTH_SCOPES = "user:read:follows";
+ // ⭐ GEÄNDERT: OAuth scopes erweitert für Helix API
+ const QString TwitchAuthManager::OAUTH_SCOPES = "user:read:email user:read:follows";
  
  TwitchAuthManager::TwitchAuthManager(QObject *parent)
      : QObject(parent)

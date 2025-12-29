@@ -26,6 +26,7 @@ const QString TwitchHelixAPI::HELIX_BASE_URL = "https://api.twitch.tv/helix";
 TwitchHelixAPI::TwitchHelixAPI(QObject *parent)
     : QObject(parent)
     , m_networkManager(new QNetworkAccessManager(this))
+    , m_authToken("")
 {
     qDebug() << "TwitchHelixAPI initialized";
 }
@@ -47,7 +48,9 @@ void TwitchHelixAPI::getTopGames(int limit)
     if (limit < 1) limit = 1;
     
     QString endpoint = QString("/games/top?first=%1").arg(limit);
-    QNetworkRequest request = createRequest(endpoint);
+    
+    // Use cached auth token if available
+    QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onTopGamesReceived);
@@ -62,7 +65,7 @@ void TwitchHelixAPI::getStreamsForGame(const QString &gameId, int limit)
     if (limit < 1) limit = 1;
     
     QString endpoint = QString("/streams?game_id=%1&first=%2").arg(gameId).arg(limit);
-    QNetworkRequest request = createRequest(endpoint);
+    QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onStreamsReceived);
@@ -73,7 +76,7 @@ void TwitchHelixAPI::getStreamForUser(const QString &userLogin)
     qDebug() << "Getting stream for user:" << userLogin;
     
     QString endpoint = QString("/streams?user_login=%1").arg(userLogin);
-    QNetworkRequest request = createRequest(endpoint);
+    QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onStreamsReceived);
@@ -84,7 +87,7 @@ void TwitchHelixAPI::getUserInfo(const QString &userLogin)
     qDebug() << "Getting user info for:" << userLogin;
     
     QString endpoint = QString("/users?login=%1").arg(userLogin);
-    QNetworkRequest request = createRequest(endpoint);
+    QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onUserInfoReceived);
