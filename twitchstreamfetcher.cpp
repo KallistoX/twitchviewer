@@ -33,6 +33,7 @@
      , m_networkManager(new QNetworkAccessManager(this))
      , m_authManager(nullptr)
      , m_settings(new QSettings("kallisto-app", "twitchviewer", this))
+     , m_isValidatingToken(false)
      , m_debugShowAds("N/A")
      , m_debugHideAds("N/A")
      , m_debugPrivileged("N/A")
@@ -41,8 +42,9 @@
      , m_debugTurbo("N/A")
      , m_debugAdblock("N/A")
  {
-     // Load cached client-integrity token
+     // Load cached tokens
      loadClientIntegrity();
+     loadGraphQLToken();
  }
  
  TwitchStreamFetcher::~TwitchStreamFetcher()
@@ -55,16 +57,96 @@
      qDebug() << "TwitchStreamFetcher: Auth manager set";
  }
  
+ // ========================================
+ // GraphQL Token Management
+ // ========================================
+ 
+ void TwitchStreamFetcher::setGraphQLToken(const QString &token)
+ {
+     QString trimmed = token.trimmed();
+     
+     if (trimmed.isEmpty()) {
+         qWarning() << "Cannot set empty GraphQL token";
+         return;
+     }
+     
+     m_graphQLToken = trimmed;
+     saveGraphQLToken();
+     
+     qDebug() << "✅ GraphQL token set (length:" << m_graphQLToken.length() << ")";
+     emit graphQLTokenChanged();
+ }
+ 
+ void TwitchStreamFetcher::clearGraphQLToken()
+ {
+     m_graphQLToken.clear();
+     m_settings->remove("auth/graphql_token");
+     m_settings->sync();
+     
+     // Reset debug info
+     m_debugShowAds = "N/A";
+     m_debugHideAds = "N/A";
+     m_debugPrivileged = "N/A";
+     m_debugRole = "N/A";
+     m_debugSubscriber = "N/A";
+     m_debugTurbo = "N/A";
+     m_debugAdblock = "N/A";
+     
+     qDebug() << "GraphQL token cleared";
+     emit graphQLTokenChanged();
+     emit debugInfoChanged();
+ }
+ 
+ void TwitchStreamFetcher::validateGraphQLToken()
+ {
+     if (m_graphQLToken.isEmpty()) {
+         emit tokenValidationFailed("No token to validate");
+         return;
+     }
+     
+     qDebug() << "Validating GraphQL token with test query...";
+     m_isValidatingToken = true;
+     emit validatingTokenChanged();
+     
+     // Use a known live channel for testing
+     m_currentChannel = "esl_csgo";
+     m_requestedQuality = "best";
+     
+     requestPlaybackToken(m_currentChannel, false);
+ }
+ 
+ void TwitchStreamFetcher::loadGraphQLToken()
+ {
+     m_graphQLToken = m_settings->value("auth/graphql_token").toString();
+     
+     if (!m_graphQLToken.isEmpty()) {
+         qDebug() << "Loaded GraphQL token from settings (length:" << m_graphQLToken.length() << ")";
+         emit graphQLTokenChanged();
+     }
+ }
+ 
+ void TwitchStreamFetcher::saveGraphQLToken()
+ {
+     m_settings->setValue("auth/graphql_token", m_graphQLToken);
+     m_settings->sync();
+     qDebug() << "GraphQL token saved to settings";
+ }
+ 
+ // ========================================
+ // Stream Fetching
+ // ========================================
+ 
  void TwitchStreamFetcher::fetchStreamUrl(const QString &channelName, const QString &quality)
  {
      qDebug() << "Fetching stream URL for channel:" << channelName << "quality:" << quality;
      
      m_currentChannel = channelName;
      m_requestedQuality = quality;
+     m_isValidatingToken = false;
      
      emit statusUpdate("Connecting to Twitch...");
      
-     // Try without client-integrity first (might not be needed)
+     // Try without client-integrity first
      requestPlaybackToken(channelName, false);
  }
  
@@ -74,22 +156,20 @@
     QNetworkRequest request(url);
      request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
      
-    if (m_authManager && m_authManager->isAuthenticated()) {
-        // When AUTHENTICATED: Use YOUR Client-ID
-        // (OAuth token is bound to YOUR Client-ID!)
-     request.setRawHeader("Client-ID", Config::TWITCH_CLIENT_ID.toUtf8());
+     // Always use public Client-ID for GraphQL
+     request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
      
-        // Use "OAuth" format
-         QString authHeader = QString("OAuth %1").arg(m_authManager->accessToken());
-         request.setRawHeader("Authorization", authHeader.toUtf8());
-        
-         qDebug() << "✅ Using OAuth authentication";
-        qDebug() << "✅ Using own Client-ID:" << Config::TWITCH_CLIENT_ID;
+     // Use GraphQL token if available, otherwise try OAuth token
+     if (!m_graphQLToken.isEmpty()) {
+         // Use GraphQL auth-token
+         request.setRawHeader("Authorization", QString("OAuth %1").arg(m_graphQLToken).toUtf8());
+         qDebug() << "✅ Using GraphQL auth-token";
+     } else if (m_authManager && m_authManager->isAuthenticated()) {
+         // Fallback to OAuth token (probably won't work for ad-free, but try anyway)
+         request.setRawHeader("Authorization", QString("OAuth %1").arg(m_authManager->accessToken()).toUtf8());
+         qDebug() << "⚠️  Using OAuth token (may not provide ad-free streams)";
      } else {
-        // When ANONYMOUS: Use Public Client-ID
-        request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
-         qDebug() << "Using anonymous request";
-        qDebug() << "Using public Client-ID";
+         qDebug() << "Using anonymous request (will have ads)";
      }
      
      // Add Client-Integrity token if available and requested
@@ -103,7 +183,7 @@
          request.setRawHeader("X-Device-Id", m_deviceId.toUtf8());
      }
      
-     // Build GraphQL query using persisted query
+     // Build GraphQL query
      QJsonObject variables;
      variables["isLive"] = true;
      variables["login"] = channelName;
@@ -128,10 +208,96 @@
      
      qDebug() << "Sending GraphQL request...";
      qDebug() << "  With Integrity:" << withIntegrity;
-     qDebug() << "  Authenticated:" << (m_authManager && m_authManager->isAuthenticated());
+     qDebug() << "  Has GraphQL Token:" << !m_graphQLToken.isEmpty();
+     qDebug() << "  Is Validation:" << m_isValidatingToken;
      
      QNetworkReply *reply = m_networkManager->post(request, data);
+     
+     if (m_isValidatingToken) {
+         connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onTokenValidationReceived);
+     } else {
      connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onPlaybackTokenReceived);
+ }
+ }
+ 
+ void TwitchStreamFetcher::onTokenValidationReceived()
+ {
+     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+     if (!reply) return;
+     
+     reply->deleteLater();
+     
+     m_isValidatingToken = false;
+     emit validatingTokenChanged();
+     
+     // Check for network errors
+     if (reply->error() != QNetworkReply::NoError) {
+         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+         qWarning() << "Token validation failed:" << reply->errorString();
+         qWarning() << "HTTP status code:" << statusCode;
+         
+         if (statusCode == 401 || statusCode == 403) {
+             emit tokenValidationFailed("Token is invalid or expired (HTTP " + QString::number(statusCode) + ")");
+         } else {
+             emit tokenValidationFailed("Network error: " + reply->errorString());
+         }
+         return;
+     }
+     
+     QByteArray responseData = reply->readAll();
+     QJsonDocument doc = QJsonDocument::fromJson(responseData);
+     
+     if (doc.isNull() || !doc.isObject()) {
+         emit tokenValidationFailed("Invalid response from Twitch");
+         return;
+     }
+     
+     QJsonObject root = doc.object();
+     
+     // Check for errors
+     if (root.contains("errors")) {
+         QJsonArray errors = root["errors"].toArray();
+         if (!errors.isEmpty()) {
+             QString errorMsg = errors[0].toObject()["message"].toString();
+             qWarning() << "Twitch API error:" << errorMsg;
+             emit tokenValidationFailed("Twitch error: " + errorMsg);
+             return;
+         }
+     }
+     
+     // Extract token and parse debug info
+     QJsonObject data = root["data"].toObject();
+     QJsonObject streamPlaybackAccessToken = data["streamPlaybackAccessToken"].toObject();
+     
+     if (streamPlaybackAccessToken.isEmpty()) {
+         emit tokenValidationFailed("Test channel not available (try again later)");
+         return;
+     }
+     
+     QString token = streamPlaybackAccessToken["value"].toString();
+     
+     if (token.isEmpty()) {
+         emit tokenValidationFailed("Failed to get test token");
+         return;
+     }
+     
+     // Parse debug info to show ad status
+     parseDebugInfo(token);
+     
+     // Build success message
+     QString message = "✅ Token valid!\n\n";
+     message += "Ad Status:\n";
+     message += "• Show Ads: " + m_debugShowAds + "\n";
+     message += "• Hide Ads: " + m_debugHideAds + "\n";
+     
+     if (m_debugShowAds == "false" || m_debugHideAds == "true") {
+         message += "\n🎉 Ad-free playback enabled!";
+     } else {
+         message += "\n⚠️  Ads may still appear (Turbo/Sub required)";
+     }
+     
+     qDebug() << "✅ Token validation successful";
+     emit tokenValidationSuccess(message);
  }
  
  void TwitchStreamFetcher::onPlaybackTokenReceived()
@@ -156,7 +322,7 @@
          // If 401/403 and we don't have client-integrity yet, try getting it
          if ((statusCode == 401 || statusCode == 403) && 
              m_clientIntegrityToken.isEmpty() &&
-             m_authManager && m_authManager->isAuthenticated()) {
+             !m_graphQLToken.isEmpty()) {
              
              qDebug() << "❌ Authentication failed, trying to get Client-Integrity token...";
              emit statusUpdate("Getting integrity token...");
@@ -189,7 +355,7 @@
              // Check if it's an integrity error
              if (errorMsg.contains("integrity", Qt::CaseInsensitive) && 
                  m_clientIntegrityToken.isEmpty() &&
-                 m_authManager && m_authManager->isAuthenticated()) {
+                 !m_graphQLToken.isEmpty()) {
                  
                  qDebug() << "❌ Integrity required, fetching token...";
                  emit statusUpdate("Getting integrity token...");
@@ -228,14 +394,15 @@
      requestPlaylist(token, signature, m_currentChannel);
  }
  
+ 
  void TwitchStreamFetcher::requestClientIntegrity()
  {
      qDebug() << "Requesting Client-Integrity token from /integrity endpoint...";
      
-     // Make sure we have authentication
-     if (!m_authManager || !m_authManager->isAuthenticated()) {
-         qWarning() << "Cannot get client-integrity without authentication";
-         emit error("Authentication required for this stream");
+     // Make sure we have GraphQL token
+     if (m_graphQLToken.isEmpty()) {
+         qWarning() << "Cannot get client-integrity without GraphQL token";
+         emit error("GraphQL token required for this stream");
          return;
      }
      
@@ -245,10 +412,8 @@
      QUrl url(TWITCH_INTEGRITY_URL);
      QNetworkRequest request(url);
      
-    // CRITICAL: Use YOUR Client-ID, not public!
-    request.setRawHeader("Client-ID", Config::TWITCH_CLIENT_ID.toUtf8());
-     request.setRawHeader("Authorization", 
-         QString("OAuth %1").arg(m_authManager->accessToken()).toUtf8());
+     request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
+     request.setRawHeader("Authorization", QString("OAuth %1").arg(m_graphQLToken).toUtf8());
      request.setRawHeader("X-Device-Id", deviceId.toUtf8());
      
      // Optional but recommended headers

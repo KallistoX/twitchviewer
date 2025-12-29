@@ -58,6 +58,8 @@ set(PROJECT_SOURCES
     twitchstreamfetcher.h
     twitchauthmanager.cpp
     twitchauthmanager.h
+    twitchhelixapi.cpp
+    twitchhelixapi.h
     config.h
 )
 

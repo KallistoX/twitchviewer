@@ -45,6 +45,10 @@
      Q_PROPERTY(QString debugTurbo READ debugTurbo NOTIFY debugInfoChanged)
      Q_PROPERTY(QString debugAdblock READ debugAdblock NOTIFY debugInfoChanged)
  
+     // GraphQL Token Management
+     Q_PROPERTY(bool hasGraphQLToken READ hasGraphQLToken NOTIFY graphQLTokenChanged)
+     Q_PROPERTY(bool isValidatingToken READ isValidatingToken NOTIFY validatingTokenChanged)
+ 
  public:
      explicit TwitchStreamFetcher(QObject *parent = nullptr);
      ~TwitchStreamFetcher();
@@ -55,6 +59,12 @@
      // Main method to fetch stream URL
      Q_INVOKABLE void fetchStreamUrl(const QString &channelName, const QString &quality = "best");
  
+     // GraphQL Token Management
+     Q_INVOKABLE void setGraphQLToken(const QString &token);
+     Q_INVOKABLE void clearGraphQLToken();
+     Q_INVOKABLE void validateGraphQLToken();
+     Q_INVOKABLE QString getGraphQLToken() const { return m_graphQLToken; }
+ 
      // Debug property getters
      QString debugShowAds() const { return m_debugShowAds; }
      QString debugHideAds() const { return m_debugHideAds; }
@@ -63,6 +73,10 @@
      QString debugSubscriber() const { return m_debugSubscriber; }
      QString debugTurbo() const { return m_debugTurbo; }
      QString debugAdblock() const { return m_debugAdblock; }
+ 
+     // GraphQL Token property getters
+     bool hasGraphQLToken() const { return !m_graphQLToken.isEmpty(); }
+     bool isValidatingToken() const { return m_isValidatingToken; }
  
  signals:
      // Emitted when stream URL is ready
@@ -77,6 +91,16 @@
      // Emitted when debug info changes
      void debugInfoChanged();
  
+     // Emitted when GraphQL token changes
+     void graphQLTokenChanged();
+     
+     // Emitted when token validation state changes
+     void validatingTokenChanged();
+     
+     // Emitted when token validation completes
+     void tokenValidationSuccess(const QString &message);
+     void tokenValidationFailed(const QString &message);
+ 
  private slots:
      // Handle GraphQL response
      void onPlaybackTokenReceived();
@@ -86,6 +110,9 @@
  
      // Handle Client-Integrity token response
      void onClientIntegrityReceived();
+ 
+     // Handle token validation response
+     void onTokenValidationReceived();
  
  private:
      // Network manager
@@ -100,6 +127,10 @@
      // Current request data
      QString m_currentChannel;
      QString m_requestedQuality;
+     bool m_isValidatingToken;
+     
+     // GraphQL Token (from browser cookie)
+     QString m_graphQLToken;
      
      // Client-Integrity token (cached)
      QString m_clientIntegrityToken;
@@ -134,6 +165,10 @@
      void saveClientIntegrity();
      bool isClientIntegrityValid() const;
      QString getOrCreateDeviceId();
+     
+     // GraphQL Token helpers
+     void loadGraphQLToken();
+     void saveGraphQLToken();
  };
  
  #endif // TWITCHSTREAMFETCHER_H

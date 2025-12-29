@@ -47,7 +47,7 @@ Page {
         
         Column {
             id: settingsColumn
-            spacing: units.gu(2)
+            spacing: units.gu(3)
             anchors {
                 margins: units.gu(2)
                 top: parent.top
@@ -57,7 +57,227 @@ Page {
             width: parent.width - units.gu(4)
             
             // ========================================
-            // TWITCH LOGIN SECTION
+            // SECTION 1: AD-FREE STREAMS (GraphQL Token)
+            // ========================================
+            
+            Label {
+                text: i18n.tr("Ad-Free Streams")
+                font.bold: true
+                fontSize: "large"
+            }
+            
+            Rectangle {
+                width: parent.width
+                height: adFreeContent.height + units.gu(2)
+                color: theme.palette.normal.background
+                border.color: theme.palette.normal.base
+                border.width: units.dp(1)
+                radius: units.gu(1)
+                
+                Column {
+                    id: adFreeContent
+                    anchors {
+                        margins: units.gu(1)
+                        top: parent.top
+                        left: parent.left
+                        right: parent.right
+                    }
+                    spacing: units.gu(1)
+                    
+                    Label {
+                        width: parent.width
+                        text: i18n.tr("Use your Twitch browser auth-token to watch streams without ads (Turbo/Subscriber only)")
+                        wrapMode: Text.WordWrap
+                        fontSize: "small"
+                    }
+                    
+                    Label {
+                        width: parent.width
+                        text: i18n.tr("How to get your token:")
+                        font.bold: true
+                        fontSize: "small"
+                    }
+                    
+                    Label {
+                        width: parent.width
+                        text: "1. Open twitch.tv in browser and login\n2. Open Developer Tools (F12)\n3. Go to Network tab\n4. Refresh page\n5. Find any gql.twitch.tv request\n6. Copy 'Authorization' header value (OAuth XXX...)\n7. Paste only the XXX... part below"
+                        wrapMode: Text.WordWrap
+                        fontSize: "x-small"
+                        color: theme.palette.normal.backgroundSecondaryText
+                    }
+                    
+                    // Token Input with Show/Hide button in Row
+                    Row {
+                        width: parent.width
+                        spacing: units.gu(1)
+                        
+                        TextField {
+                            id: gqlTokenInput
+                            width: parent.width - showHideButton.width - units.gu(1)
+                            placeholderText: i18n.tr('Paste auth-token here (30+ characters)')
+                            text: twitchFetcher.getGraphQLToken()
+                            inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                            echoMode: TextInput.Password
+                        }
+                        
+                        Button {
+                            id: showHideButton
+                            text: gqlTokenInput.echoMode === TextInput.Password ? "Show" : "Hide"
+                            width: units.gu(10)
+                            onClicked: {
+                                gqlTokenInput.echoMode = (gqlTokenInput.echoMode === TextInput.Password) 
+                                    ? TextInput.Normal 
+                                    : TextInput.Password
+                            }
+                        }
+                    }
+                    
+                    // Buttons
+                    Row {
+                        width: parent.width
+                        spacing: units.gu(1)
+                        
+                        Button {
+                            text: i18n.tr('Save Token')
+                            color: theme.palette.normal.positive
+                            enabled: gqlTokenInput.text.length > 20
+                            width: (parent.width - units.gu(2)) / 3
+                            onClicked: {
+                                twitchFetcher.setGraphQLToken(gqlTokenInput.text)
+                                gqlStatusLabel.text = "✅ Token saved!"
+                                gqlStatusLabel.color = theme.palette.normal.positive
+                            }
+                        }
+                        
+                        Button {
+                            text: i18n.tr('Validate')
+                            enabled: twitchFetcher.hasGraphQLToken && !twitchFetcher.isValidatingToken
+                            width: (parent.width - units.gu(2)) / 3
+                            onClicked: {
+                                gqlStatusLabel.text = "Testing token..."
+                                gqlStatusLabel.color = theme.palette.normal.backgroundSecondaryText
+                                twitchFetcher.validateGraphQLToken()
+                            }
+                            
+                            ActivityIndicator {
+                                anchors.centerIn: parent
+                                running: twitchFetcher.isValidatingToken
+                                visible: running
+                            }
+                        }
+                        
+                        Button {
+                            text: i18n.tr('Clear')
+                            color: theme.palette.normal.negative
+                            enabled: twitchFetcher.hasGraphQLToken
+                            width: (parent.width - units.gu(2)) / 3
+                            onClicked: {
+                                twitchFetcher.clearGraphQLToken()
+                                gqlTokenInput.text = ""
+                                gqlStatusLabel.text = "Token cleared"
+                                gqlStatusLabel.color = theme.palette.normal.backgroundSecondaryText
+                            }
+                        }
+                    }
+                    
+                    // Status Label
+                    Label {
+                        id: gqlStatusLabel
+                        width: parent.width
+                        text: twitchFetcher.hasGraphQLToken ? "✅ Token configured" : "No token configured"
+                        wrapMode: Text.WordWrap
+                        fontSize: "small"
+                        visible: text.length > 0
+                    }
+                    
+                    // Ad Status Display (after validation)
+                    Rectangle {
+                        width: parent.width
+                        height: adStatusColumn.height + units.gu(1)
+                        color: theme.palette.normal.base
+                        radius: units.gu(0.5)
+                        visible: twitchFetcher.debugShowAds !== "N/A"
+                        
+                        Column {
+                            id: adStatusColumn
+                            anchors {
+                                margins: units.gu(0.5)
+                                top: parent.top
+                                left: parent.left
+                                right: parent.right
+                            }
+                            spacing: units.gu(0.5)
+                            
+                            Label {
+                                text: i18n.tr("Last Validation Result:")
+                                font.bold: true
+                                fontSize: "small"
+                            }
+                            
+                            Row {
+                                width: parent.width
+                                spacing: units.gu(1)
+                                
+                                Label {
+                                    text: "Show Ads:"
+                                    width: units.gu(12)
+                                    fontSize: "small"
+                                }
+                                
+                                Label {
+                                    text: twitchFetcher.debugShowAds
+                                    color: twitchFetcher.debugShowAds === "false" ? theme.palette.normal.positive : theme.palette.normal.negative
+                                    fontSize: "small"
+                                    font.bold: true
+                                }
+                            }
+                            
+                            Row {
+                                width: parent.width
+                                spacing: units.gu(1)
+                                
+                                Label {
+                                    text: "Hide Ads:"
+                                    width: units.gu(12)
+                                    fontSize: "small"
+                                }
+                                
+                                Label {
+                                    text: twitchFetcher.debugHideAds
+                                    color: twitchFetcher.debugHideAds === "true" ? theme.palette.normal.positive : theme.palette.normal.negative
+                                    fontSize: "small"
+                                    font.bold: true
+                                }
+                            }
+                            
+                            Label {
+                                width: parent.width
+                                text: {
+                                    if (twitchFetcher.debugShowAds === "false" || twitchFetcher.debugHideAds === "true") {
+                                        return "🎉 " + i18n.tr("Ad-free playback enabled!")
+                                    } else {
+                                        return "⚠️  " + i18n.tr("Ads may appear (Turbo/Sub required)")
+                                    }
+                                }
+                                wrapMode: Text.WordWrap
+                                fontSize: "small"
+                                font.bold: true
+                            }
+                        }
+                    }
+                    
+                    Label {
+                        width: parent.width
+                        text: i18n.tr("Note: Token remains valid for months unless you logout or change password on Twitch.")
+                        wrapMode: Text.WordWrap
+                        fontSize: "x-small"
+                        color: theme.palette.normal.backgroundSecondaryText
+                    }
+                }
+            }
+            
+            // ========================================
+            // SECTION 2: TWITCH ACCOUNT (OAuth)
             // ========================================
             
             Label {
@@ -68,14 +288,14 @@ Page {
             
             Rectangle {
                 width: parent.width
-                height: loginContent.height + units.gu(2)
+                height: oauthContent.height + units.gu(2)
                 color: theme.palette.normal.background
                 border.color: theme.palette.normal.base
                 border.width: units.dp(1)
                 radius: units.gu(1)
                 
                 Column {
-                    id: loginContent
+                    id: oauthContent
                     anchors {
                         margins: units.gu(1)
                         top: parent.top
@@ -92,7 +312,7 @@ Page {
                         
                         Label {
                             width: parent.width
-                            text: i18n.tr("Login to watch streams without ads (Turbo/Sub users)")
+                            text: i18n.tr("Login to access followed streams and account features")
                             wrapMode: Text.WordWrap
                             fontSize: "small"
                         }
@@ -159,16 +379,6 @@ Page {
                             }
                         }
                         
-                        Button {
-                            text: i18n.tr("Copy Code")
-                            width: parent.width
-                            onClicked: {
-                                // Copy to clipboard (requires Lomiri.Content or Qt.labs.platform)
-                                // For now just show message
-                                statusLabel.text = "Code: " + authManager.userCode
-                            }
-                        }
-                        
                         Row {
                             anchors.horizontalCenter: parent.horizontalCenter
                             spacing: units.gu(1)
@@ -220,7 +430,7 @@ Page {
                         
                         Label {
                             width: parent.width
-                            text: i18n.tr("You can now watch streams without ads (if you have Turbo or are subscribed to the channel)")
+                            text: i18n.tr("You can now access followed streams and account features")
                             wrapMode: Text.WordWrap
                             fontSize: "small"
                         }
@@ -237,194 +447,12 @@ Page {
                     
                     // Status Label
                     Label {
-                        id: statusLabel
+                        id: oauthStatusLabel
                         width: parent.width
                         text: ""
                         wrapMode: Text.WordWrap
                         fontSize: "small"
                         visible: text.length > 0
-                    }
-                }
-            }
-            
-            // ========================================
-            // DEBUG INFO SECTION
-            // ========================================
-            
-            Label {
-                text: i18n.tr("Debug Information")
-                font.bold: true
-                fontSize: "large"
-            }
-            
-            Rectangle {
-                width: parent.width
-                height: debugContent.height + units.gu(2)
-                color: theme.palette.normal.background
-                border.color: theme.palette.normal.base
-                border.width: units.dp(1)
-                radius: units.gu(1)
-                
-                Column {
-                    id: debugContent
-                    anchors {
-                        margins: units.gu(1)
-                        top: parent.top
-                        left: parent.left
-                        right: parent.right
-                    }
-                    spacing: units.gu(0.5)
-                    
-                    // Authentication Status
-                    Row {
-                        width: parent.width
-                        spacing: units.gu(1)
-                        
-                        Label {
-                            text: i18n.tr("Authenticated:")
-                            width: units.gu(15)
-                            font.bold: true
-                        }
-                        
-                        Label {
-                            text: authManager.isAuthenticated ? "Yes ✅" : "No ❌"
-                            color: authManager.isAuthenticated ? theme.palette.normal.positive : theme.palette.normal.negative
-                        }
-                    }
-                    
-                    Rectangle {
-                        width: parent.width
-                        height: units.dp(1)
-                        color: theme.palette.normal.base
-                    }
-                    
-                    // Stream Info (from last fetch)
-                    Label {
-                        text: i18n.tr("Last Stream Info:")
-                        font.bold: true
-                        fontSize: "small"
-                    }
-                    
-                    Row {
-                        width: parent.width
-                        spacing: units.gu(1)
-                        
-                        Label {
-                            text: "Show Ads:"
-                            width: units.gu(15)
-                            fontSize: "small"
-                        }
-                        
-                        Label {
-                            text: twitchFetcher.debugShowAds
-                            color: twitchFetcher.debugShowAds === "true" ? theme.palette.normal.negative : theme.palette.normal.positive
-                            fontSize: "small"
-                        }
-                    }
-                    
-                    Row {
-                        width: parent.width
-                        spacing: units.gu(1)
-                        
-                        Label {
-                            text: "Hide Ads:"
-                            width: units.gu(15)
-                            fontSize: "small"
-                        }
-                        
-                        Label {
-                            text: twitchFetcher.debugHideAds
-                            color: twitchFetcher.debugHideAds === "true" ? theme.palette.normal.positive : theme.palette.normal.negative
-                            fontSize: "small"
-                        }
-                    }
-                    
-                    Row {
-                        width: parent.width
-                        spacing: units.gu(1)
-                        
-                        Label {
-                            text: "Privileged:"
-                            width: units.gu(15)
-                            fontSize: "small"
-                        }
-                        
-                        Label {
-                            text: twitchFetcher.debugPrivileged
-                            fontSize: "small"
-                        }
-                    }
-                    
-                    Row {
-                        width: parent.width
-                        spacing: units.gu(1)
-                        
-                        Label {
-                            text: "Role:"
-                            width: units.gu(15)
-                            fontSize: "small"
-                        }
-                        
-                        Label {
-                            text: twitchFetcher.debugRole.length > 0 ? twitchFetcher.debugRole : "(none)"
-                            fontSize: "small"
-                        }
-                    }
-                    
-                    Row {
-                        width: parent.width
-                        spacing: units.gu(1)
-                        
-                        Label {
-                            text: "Subscriber:"
-                            width: units.gu(15)
-                            fontSize: "small"
-                        }
-                        
-                        Label {
-                            text: twitchFetcher.debugSubscriber
-                            fontSize: "small"
-                        }
-                    }
-                    
-                    Row {
-                        width: parent.width
-                        spacing: units.gu(1)
-                        
-                        Label {
-                            text: "Turbo:"
-                            width: units.gu(15)
-                            fontSize: "small"
-                        }
-                        
-                        Label {
-                            text: twitchFetcher.debugTurbo
-                            fontSize: "small"
-                        }
-                    }
-                    
-                    Row {
-                        width: parent.width
-                        spacing: units.gu(1)
-                        
-                        Label {
-                            text: "Adblock:"
-                            width: units.gu(15)
-                            fontSize: "small"
-                        }
-                        
-                        Label {
-                            text: twitchFetcher.debugAdblock
-                            fontSize: "small"
-                        }
-                    }
-                    
-                    Label {
-                        width: parent.width
-                        text: i18n.tr("These values are from the last stream you opened. They show whether Twitch is serving you ads.")
-                        wrapMode: Text.WordWrap
-                        fontSize: "x-small"
-                        color: theme.palette.normal.backgroundSecondaryText
                     }
                 }
             }
@@ -492,24 +520,40 @@ Page {
         }
     }
     
+    // Connections to fetcher for validation results
+    Connections {
+        target: twitchFetcher
+        ignoreUnknownSignals: true
+        
+        onTokenValidationSuccess: {
+            gqlStatusLabel.text = message
+            gqlStatusLabel.color = theme.palette.normal.positive
+        }
+        
+        onTokenValidationFailed: {
+            gqlStatusLabel.text = "❌ " + message
+            gqlStatusLabel.color = theme.palette.normal.negative
+        }
+    }
+    
     // Connections to auth manager
     Connections {
         target: authManager
         ignoreUnknownSignals: true
         
         onAuthenticationSucceeded: {
-            statusLabel.text = i18n.tr("✅ Successfully logged in!")
-            statusLabel.color = theme.palette.normal.positive
+            oauthStatusLabel.text = i18n.tr("✅ Successfully logged in!")
+            oauthStatusLabel.color = theme.palette.normal.positive
         }
         
         onAuthenticationFailed: {
-            statusLabel.text = i18n.tr("❌ Error: ") + message
-            statusLabel.color = theme.palette.normal.negative
+            oauthStatusLabel.text = i18n.tr("❌ Error: ") + message
+            oauthStatusLabel.color = theme.palette.normal.negative
         }
         
         onStatusMessage: {
-            statusLabel.text = message
-            statusLabel.color = theme.palette.normal.backgroundSecondaryText
+            oauthStatusLabel.text = message
+            oauthStatusLabel.color = theme.palette.normal.backgroundSecondaryText
         }
     }
 }

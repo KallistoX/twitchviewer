@@ -29,6 +29,8 @@
  public:
      // Your Twitch Application Client ID from https://dev.twitch.tv/console/apps
      static const QString TWITCH_CLIENT_ID;
+     
+     // Twitch's public Client ID (used for GraphQL and Helix API)
      static const QString TWITCH_PUBLIC_CLIENT_ID;
  };
  
