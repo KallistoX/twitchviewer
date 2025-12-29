@@ -56,6 +56,13 @@ int main(int argc, char *argv[])
             }
         });
 
+    // Also sync on token refresh (new access token without logout/login)
+    QObject::connect(authManager, &TwitchAuthManager::tokenRefreshed,
+        [helixApi, authManager]() {
+            helixApi->setAuthToken(authManager->accessToken());
+            qDebug() << "✅ Helix API: OAuth token refreshed and updated";
+        });
+
     // Set initial token if already authenticated
     if (authManager->isAuthenticated()) {
         helixApi->setAuthToken(authManager->accessToken());

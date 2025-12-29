@@ -90,7 +90,16 @@ public:
      */
     Q_INVOKABLE void getUserInfo(const QString &userLogin);
 
-    //Set OAuth token for authenticated requests
+    /**
+     * Get Followed Live Streams (requires OAuth)
+     * Shows live streams from channels the authenticated user follows
+     * 
+     * @param userId User ID (from OAuth validation or user info)
+     * @param limit Number of results (max 100, default 20)
+     */
+    Q_INVOKABLE void getFollowedStreams(const QString &userId, int limit = 20);
+
+    // Set OAuth token for authenticated requests
     void setAuthToken(const QString &token) { m_authToken = token; }
 
 signals:
@@ -102,6 +111,9 @@ signals:
     
     // Single stream response
     void streamReceived(const QJsonObject &stream);
+    
+    // Followed streams response
+    void followedStreamsReceived(const QJsonArray &streams);
     
     // User info response
     void userInfoReceived(const QJsonObject &user);
@@ -116,6 +128,7 @@ signals:
 private slots:
     void onTopGamesReceived();
     void onStreamsReceived();
+    void onFollowedStreamsReceived();
     void onUserInfoReceived();
     void onAuthValidationReceived();
 

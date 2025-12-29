@@ -30,6 +30,7 @@
  const QString TwitchStreamFetcher::TWITCH_USHER_URL = "https://usher.ttvnw.net/api/channel/hls/%1.m3u8";
  const QString TwitchStreamFetcher::PERSISTED_QUERY_HASH = "0828119ded1c13477966434e15800ff57ddacf13ba1911c129dc2200705b0712";
  const QString TwitchStreamFetcher::PERSISTED_QUERY_HASH_USER = "3cff634f43c5c78830907a662b315b1847cfc0dce32e6a9752e7f5d70b37f8c0";
+ const QString TwitchStreamFetcher::PERSISTED_QUERY_HASH_CATEGORIES = "2f67f71ba89f3c0ed26a141ec00da1defecb2303595f5cda4298169549783d9e";
  
  TwitchStreamFetcher::TwitchStreamFetcher(QObject *parent)
      : QObject(parent)
@@ -760,6 +761,151 @@ QString TwitchStreamFetcher::getQualityUrl(const QString &quality) const
      
      return QString();
  }
+
+// ========================================
+// Top Categories (GraphQL - Anonymous)
+// ========================================
+
+void TwitchStreamFetcher::fetchTopCategoriesGraphQL(int limit)
+{
+    qDebug() << "Fetching top categories via GraphQL (anonymous), limit:" << limit;
+    
+    // Clamp limit
+    if (limit > 100) limit = 100;
+    if (limit < 1) limit = 1;
+    
+    requestTopCategories(limit);
+}
+
+void TwitchStreamFetcher::requestTopCategories(int limit)
+{
+    QUrl url(TWITCH_GQL_URL);
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    
+    // CRITICAL: Use public Client-ID, NO auth token (anonymous)
+    request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
+    qDebug() << "GraphQL Categories: Using public Client-ID, NO auth token";
+    
+    // Build GraphQL query for BrowsePage_AllDirectories
+    QJsonObject options;
+    
+    QJsonObject recommendationsContext;
+    recommendationsContext["platform"] = "web";
+    options["recommendationsContext"] = recommendationsContext;
+    
+    options["requestID"] = "JIRA-VXP-2397";
+    options["sort"] = "RELEVANCE";
+    options["tags"] = QJsonArray();
+    
+    QJsonObject variables;
+    variables["limit"] = limit;
+    variables["options"] = options;
+    
+    QJsonObject persistedQuery;
+    persistedQuery["version"] = 1;
+    persistedQuery["sha256Hash"] = PERSISTED_QUERY_HASH_CATEGORIES;
+    
+    QJsonObject extensions;
+    extensions["persistedQuery"] = persistedQuery;
+    
+    QJsonObject payload;
+    payload["operationName"] = "BrowsePage_AllDirectories";
+    payload["variables"] = variables;
+    payload["extensions"] = extensions;
+    
+    QJsonDocument doc(payload);
+    QByteArray data = doc.toJson(QJsonDocument::Compact);
+    
+    qDebug() << "Sending BrowsePage_AllDirectories query...";
+    
+    QNetworkReply *reply = m_networkManager->post(request, data);
+    connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onTopCategoriesReceived);
+}
+
+void TwitchStreamFetcher::onTopCategoriesReceived()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    
+    reply->deleteLater();
+    
+    if (reply->error() != QNetworkReply::NoError) {
+        qWarning() << "Failed to fetch categories:" << reply->errorString();
+        QByteArray errorBody = reply->readAll();
+        if (!errorBody.isEmpty()) {
+            qWarning() << "Error response:" << errorBody;
+        }
+        emit error("Failed to load categories: " + reply->errorString());
+        return;
+    }
+    
+    QByteArray responseData = reply->readAll();
+    qDebug() << "Categories GraphQL response received, size:" << responseData.size();
+    
+    QJsonDocument doc = QJsonDocument::fromJson(responseData);
+    
+    if (doc.isNull() || !doc.isObject()) {
+        emit error("Invalid JSON response for categories");
+        return;
+    }
+    
+    QJsonObject root = doc.object();
+    
+    // Check for errors
+    if (root.contains("errors")) {
+        QJsonArray errors = root["errors"].toArray();
+        if (!errors.isEmpty()) {
+            QString errorMsg = errors[0].toObject()["message"].toString();
+            qWarning() << "GraphQL error:" << errorMsg;
+            emit error("Categories error: " + errorMsg);
+            return;
+        }
+    }
+    
+    // Parse response: data.directoriesWithTags.edges[].node
+    QJsonObject data = root["data"].toObject();
+    QJsonObject directoriesWithTags = data["directoriesWithTags"].toObject();
+    QJsonArray edges = directoriesWithTags["edges"].toArray();
+    
+    if (edges.isEmpty()) {
+        qDebug() << "No categories found";
+        emit topCategoriesReceived(QJsonArray());
+        return;
+    }
+    
+    // Extract node objects (the actual categories)
+    QJsonArray categories;
+    for (const QJsonValue &edgeValue : edges) {
+        QJsonObject edge = edgeValue.toObject();
+        QJsonObject node = edge["node"].toObject();
+        
+        if (!node.isEmpty()) {
+            // Transform to simpler format for QML
+            QJsonObject category;
+            category["id"] = node["id"];
+            category["name"] = node["displayName"];
+            category["boxArtUrl"] = node["avatarURL"];
+            category["viewersCount"] = node["viewersCount"];
+            
+            // Extract tags (optional)
+            QJsonArray tagsArray = node["tags"].toArray();
+            QJsonArray tagNames;
+            for (const QJsonValue &tagValue : tagsArray) {
+                QJsonObject tag = tagValue.toObject();
+                if (!tag["isLanguageTag"].toBool()) {
+                    tagNames.append(tag["localizedName"]);
+                }
+            }
+            category["tags"] = tagNames;
+            
+            categories.append(category);
+        }
+    }
+    
+    qDebug() << "✅ Received" << categories.size() << "categories from GraphQL";
+    emit topCategoriesReceived(categories);
+}
 
 // ========================================
 // User Info Methods - SIMPLIFIED to use OAuth + Helix API only

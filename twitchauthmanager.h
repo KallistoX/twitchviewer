@@ -33,6 +33,11 @@
   * 3. User enters the code shown in the app
   * 4. App polls for token until user authorizes
   * 5. Token is saved and used for authenticated API requests
+  * 
+  * Token Refresh:
+  * - Access tokens expire after ~4 hours
+  * - Refresh tokens are used to get new access tokens
+  * - Refresh tokens expire after ~60 days of inactivity
   */
  class TwitchAuthManager : public QObject
  {
@@ -67,6 +72,9 @@
      // Validate existing token
      void validateToken();
  
+     // Refresh access token using refresh token
+     void refreshAccessToken();
+ 
  signals:
      // Authentication state changed
      void authenticationChanged(bool authenticated);
@@ -87,6 +95,9 @@
      // Status updates for UI
      void statusMessage(QString message);
  
+     // Token refresh completed
+     void tokenRefreshed();
+ 
  private slots:
      // Handle device code response
      void onDeviceCodeReceived();
@@ -99,6 +110,9 @@
      
      // Poll for token
      void pollForToken();
+ 
+     // Handle refresh token response
+     void onRefreshTokenReceived();
  
  private:
      // Network manager

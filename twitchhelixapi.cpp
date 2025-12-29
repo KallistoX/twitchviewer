@@ -93,6 +93,28 @@ void TwitchHelixAPI::getUserInfo(const QString &userLogin)
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onUserInfoReceived);
 }
 
+void TwitchHelixAPI::getFollowedStreams(const QString &userId, int limit)
+{
+    qDebug() << "Getting followed streams for user ID:" << userId << "limit:" << limit;
+    
+    // IMPORTANT: Requires OAuth token with user:read:follows scope
+    if (m_authToken.isEmpty()) {
+        qWarning() << "Cannot get followed streams without OAuth token";
+        emit error("Authentication required to view followed streams");
+        return;
+    }
+    
+    // Clamp limit
+    if (limit > 100) limit = 100;
+    if (limit < 1) limit = 1;
+    
+    QString endpoint = QString("/streams/followed?user_id=%1&first=%2").arg(userId).arg(limit);
+    QNetworkRequest request = createRequest(endpoint, m_authToken);
+    
+    QNetworkReply *reply = m_networkManager->get(request);
+    connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onFollowedStreamsReceived);
+}
+
 void TwitchHelixAPI::validateAuthToken(const QString &authToken)
 {
     qDebug() << "Validating auth token...";
@@ -167,6 +189,33 @@ void TwitchHelixAPI::onStreamsReceived()
     } else {
         emit streamsReceived(streams);
     }
+}
+
+void TwitchHelixAPI::onFollowedStreamsReceived()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    
+    reply->deleteLater();
+    
+    if (reply->error() != QNetworkReply::NoError) {
+        handleNetworkError(reply);
+        return;
+    }
+    
+    QByteArray responseData = reply->readAll();
+    QJsonDocument doc = QJsonDocument::fromJson(responseData);
+    
+    if (doc.isNull() || !doc.isObject()) {
+        emit error("Invalid JSON response");
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    QJsonArray streams = obj["data"].toArray();
+    
+    qDebug() << "Received" << streams.size() << "followed streams";
+    emit followedStreamsReceived(streams);
 }
 
 void TwitchHelixAPI::onUserInfoReceived()

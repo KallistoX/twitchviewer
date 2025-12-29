@@ -28,9 +28,9 @@ Page {
         
         leadingActionBar.actions: [
             Action {
-                iconName: "back"
-                text: i18n.tr("Back")
-                onTriggered: pageStack.pop()
+                iconName: "navigation-menu"
+                text: i18n.tr("Menu")
+                onTriggered: drawer.open()
             }
         ]
     }

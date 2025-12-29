@@ -79,6 +79,9 @@
      // User Info
      Q_INVOKABLE void fetchCurrentUser();
      
+     // Fetch top categories using GraphQL (anonymous, no auth required)
+     Q_INVOKABLE void fetchTopCategoriesGraphQL(int limit = 30);
+     
      // User Info property getters
      QString currentUserId() const { return m_currentUserId; }
      QString currentUserLogin() const { return m_currentUserLogin; }
@@ -128,6 +131,9 @@
      void tokenValidationSuccess(const QString &message);
      void tokenValidationFailed(const QString &message);
  
+     // Emitted when top categories are received (GraphQL)
+     void topCategoriesReceived(const QJsonArray &categories);
+ 
  private slots:
      // Handle GraphQL response
      void onPlaybackTokenReceived();
@@ -143,6 +149,9 @@
 
      // Handle user info response (UserMenuCurrentUser query)
      void onUserInfoReceived();
+ 
+     // Handle top categories response (BrowsePage_AllDirectories query)
+     void onTopCategoriesReceived();
  
  private:
      // Network manager
@@ -192,6 +201,7 @@
      static const QString TWITCH_USHER_URL;
      static const QString PERSISTED_QUERY_HASH;
      static const QString PERSISTED_QUERY_HASH_USER;
+     static const QString PERSISTED_QUERY_HASH_CATEGORIES;
      
      // Helper methods
      void requestPlaybackToken(const QString &channelName, bool withIntegrity = false);
@@ -199,6 +209,7 @@
      void requestPlaylist(const QString &token, const QString &signature, const QString &channelName);
      void requestUserInfo();
      void requestUserDetails(const QString &userId);
+     void requestTopCategories(int limit);
      QString parseM3U8Playlist(const QString &m3u8Content, const QString &quality);
      QString extractUrlFromM3U8(const QString &m3u8Content, const QString &resolution);
      void parseDebugInfo(const QString &tokenValue);

@@ -1,6 +1,9 @@
 <RCC>
     <qresource prefix="/">
         <file>Main.qml</file>
+        <file>FollowedPage.qml</file>
+        <file>CategoriesPage.qml</file>
+        <file>PlayerPage.qml</file>
         <file>SettingsPage.qml</file>
     </qresource>
 </RCC>

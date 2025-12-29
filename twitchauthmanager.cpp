@@ -30,7 +30,6 @@
  const QString TwitchAuthManager::TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token";
  const QString TwitchAuthManager::TWITCH_VALIDATE_URL = "https://id.twitch.tv/oauth2/validate";
  
- // ⭐ GEÄNDERT: OAuth scopes erweitert für Helix API
  const QString TwitchAuthManager::OAUTH_SCOPES = "user:read:email user:read:follows";
  
  TwitchAuthManager::TwitchAuthManager(QObject *parent)
@@ -238,6 +237,7 @@
      
      qDebug() << "✅ Authentication successful!";
      qDebug() << "Access token received (length:" << m_accessToken.length() << ")";
+     qDebug() << "Refresh token received (length:" << m_refreshToken.length() << ")";
      
      stopPolling();
      saveTokens();
@@ -268,7 +268,15 @@
      
      if (reply->error() != QNetworkReply::NoError) {
          qWarning() << "Token validation failed:" << reply->errorString();
-         qDebug() << "Token is invalid, clearing...";
+         
+         // Check if we have a refresh token to try
+         if (!m_refreshToken.isEmpty()) {
+             qDebug() << "Access token expired, attempting to refresh...";
+             refreshAccessToken();
+             return;
+         }
+         
+         qDebug() << "No refresh token available, clearing tokens and logging out";
          clearTokens();
          emit authenticationChanged(false);
          return;
@@ -279,6 +287,14 @@
      
      if (doc.isNull() || !doc.isObject()) {
          qWarning() << "Invalid validation response";
+         
+         // Try refresh if available
+         if (!m_refreshToken.isEmpty()) {
+             qDebug() << "Invalid response, attempting to refresh token...";
+             refreshAccessToken();
+             return;
+         }
+         
          clearTokens();
          emit authenticationChanged(false);
          return;
@@ -289,6 +305,14 @@
      
      if (clientId != Config::TWITCH_CLIENT_ID) {
          qWarning() << "Token is for different client ID";
+         
+         // Try refresh if available
+         if (!m_refreshToken.isEmpty()) {
+             qDebug() << "Wrong client ID, attempting to refresh token...";
+             refreshAccessToken();
+             return;
+         }
+         
          clearTokens();
          emit authenticationChanged(false);
          return;
@@ -296,6 +320,98 @@
      
      qDebug() << "✅ Token is valid!";
      emit authenticationChanged(true);
+ }
+ 
+ void TwitchAuthManager::refreshAccessToken()
+ {
+     if (m_refreshToken.isEmpty()) {
+         qWarning() << "Cannot refresh token: no refresh token available";
+         emit authenticationFailed("No refresh token available");
+         clearTokens();
+         emit authenticationChanged(false);
+         return;
+     }
+     
+     qDebug() << "Refreshing access token using refresh token...";
+     emit statusMessage("Refreshing authentication...");
+     
+     QUrl url(TWITCH_TOKEN_URL);
+     QNetworkRequest request(url);
+     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+     
+     QUrlQuery params;
+     params.addQueryItem("client_id", Config::TWITCH_CLIENT_ID);
+     params.addQueryItem("grant_type", "refresh_token");
+     params.addQueryItem("refresh_token", m_refreshToken);
+     
+     QByteArray data = params.toString(QUrl::FullyEncoded).toUtf8();
+     
+     QNetworkReply *reply = m_networkManager->post(request, data);
+     connect(reply, &QNetworkReply::finished, this, &TwitchAuthManager::onRefreshTokenReceived);
+ }
+ 
+ void TwitchAuthManager::onRefreshTokenReceived()
+ {
+     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+     if (!reply) return;
+     
+     reply->deleteLater();
+     
+     if (reply->error() != QNetworkReply::NoError) {
+         qWarning() << "Token refresh failed:" << reply->errorString();
+         QByteArray errorBody = reply->readAll();
+         qWarning() << "Error response:" << errorBody;
+         
+         // Refresh token is also invalid/expired - user must re-authenticate
+         qDebug() << "❌ Refresh token expired or invalid, user must log in again";
+         emit authenticationFailed("Session expired. Please log in again.");
+         clearTokens();
+         emit authenticationChanged(false);
+         return;
+     }
+     
+     QByteArray responseData = reply->readAll();
+     qDebug() << "Refresh token response received:" << responseData;
+     
+     QJsonDocument doc = QJsonDocument::fromJson(responseData);
+     
+     if (doc.isNull() || !doc.isObject()) {
+         qWarning() << "Invalid refresh response";
+         clearTokens();
+         emit authenticationChanged(false);
+         return;
+     }
+     
+     QJsonObject obj = doc.object();
+     
+     // Update tokens
+     QString newAccessToken = obj["access_token"].toString();
+     QString newRefreshToken = obj["refresh_token"].toString();
+     
+     if (newAccessToken.isEmpty()) {
+         qWarning() << "Failed to get new access token";
+         clearTokens();
+         emit authenticationChanged(false);
+         return;
+     }
+     
+     m_accessToken = newAccessToken;
+     
+     // Twitch may return a new refresh token, or keep the old one
+     if (!newRefreshToken.isEmpty()) {
+         m_refreshToken = newRefreshToken;
+         qDebug() << "✅ Token refreshed successfully (new refresh token provided)";
+     } else {
+         qDebug() << "✅ Token refreshed successfully (refresh token reused)";
+     }
+     
+     qDebug() << "New access token length:" << m_accessToken.length();
+     
+     saveTokens();
+     
+     emit authenticationChanged(true);
+     emit tokenRefreshed();
+     emit statusMessage("Authentication refreshed successfully!");
  }
  
  void TwitchAuthManager::logout()
@@ -312,6 +428,7 @@
     qDebug() << "=== Saving OAuth tokens ===";
     qDebug() << "Settings file:" << m_settings->fileName();
      qDebug() << "Access token length:" << m_accessToken.length();
+    qDebug() << "Refresh token length:" << m_refreshToken.length();
     
     m_settings->setValue("auth/access_token", m_accessToken);
     m_settings->setValue("auth/refresh_token", m_refreshToken);
@@ -336,6 +453,12 @@
          qDebug() << "  Token starts with:" << m_accessToken.left(10) << "...";
      } else {
         qDebug() << "❌ No access token found";
+     }
+     
+     if (!m_refreshToken.isEmpty()) {
+         qDebug() << "✅ Loaded refresh token (length:" << m_refreshToken.length() << ")";
+     } else {
+         qDebug() << "❌ No refresh token found";
      }
  }
  
