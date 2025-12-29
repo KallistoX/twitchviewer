@@ -115,9 +115,27 @@ Page {
                             id: gqlTokenInput
                             width: parent.width - showHideButton.width - units.gu(1)
                             placeholderText: i18n.tr('Paste auth-token here (30+ characters)')
-                            text: twitchFetcher.getGraphQLToken()
                             inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                             echoMode: TextInput.Password
+                            
+                            // Initialize with saved token
+                            Component.onCompleted: {
+                                text = twitchFetcher.getGraphQLToken()
+                                console.log("Loaded GraphQL token, length:", text.length)
+                            }
+                            
+                            // React to token changes from C++
+                            Connections {
+                                target: twitchFetcher
+                                ignoreUnknownSignals: true
+                                onGraphQLTokenChanged: {
+                                    var savedToken = twitchFetcher.getGraphQLToken()
+                                    if (gqlTokenInput.text !== savedToken) {
+                                        gqlTokenInput.text = savedToken
+                                        console.log("Token updated from C++, new length:", savedToken.length)
+                                    }
+                                }
+                            }
                         }
                         
                         Button {

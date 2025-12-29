@@ -22,6 +22,8 @@
  #include <QJsonObject>
  #include <QJsonArray>
  #include <QDebug>
+ #include <QStandardPaths>
+ #include <QDir>
  
  // Twitch OAuth Device Flow endpoints
  const QString TwitchAuthManager::TWITCH_DEVICE_URL = "https://id.twitch.tv/oauth2/device";
@@ -35,20 +37,35 @@
      : QObject(parent)
      , m_networkManager(new QNetworkAccessManager(this))
      , m_pollTimer(new QTimer(this))
-     , m_settings(new QSettings("kallisto-app", "twitchviewer", this))
      , m_expiresIn(0)
      , m_interval(5)
      , m_isPolling(false)
  {
+     // CRITICAL FIX: Use AppDataLocation for Ubuntu Touch confinement
+     QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+     
+     // Ensure directory exists
+     QDir().mkpath(dataPath);
+     
+     QString settingsFile = dataPath + "/twitchviewer.conf";
+     m_settings = new QSettings(settingsFile, QSettings::NativeFormat, this);
+     
+     qDebug() << "=== TwitchAuthManager Settings ===";
+     qDebug() << "Settings file:" << m_settings->fileName();
+     qDebug() << "AppDataLocation:" << dataPath;
+     
      connect(m_pollTimer, &QTimer::timeout, this, &TwitchAuthManager::pollForToken);
      
      // Load saved tokens on startup
      loadTokens();
      
-     // If we have a token, validate it
+     // If we have a token, validate it and emit auth state
      if (!m_accessToken.isEmpty()) {
          qDebug() << "Found saved access token, validating...";
          validateToken();
+     } else {
+         qDebug() << "No saved access token found";
+         emit authenticationChanged(false);
      }
  }
  
@@ -289,26 +306,36 @@
      emit authenticationChanged(false);
      emit statusMessage("Logged out");
  }
- 
+
  void TwitchAuthManager::saveTokens()
- {
-    qDebug() << "Saving tokens...";
-    qDebug() << "  Access token length:" << m_accessToken.length();
-    qDebug() << "  Access token starts with:" << m_accessToken.left(10) << "...";
-     m_settings->setValue("auth/access_token", m_accessToken);
-     m_settings->setValue("auth/refresh_token", m_refreshToken);
-     m_settings->sync();
-     qDebug() << "Tokens saved to settings";
- }
+{
+    qDebug() << "=== Saving OAuth tokens ===";
+    qDebug() << "Settings file:" << m_settings->fileName();
+     qDebug() << "Access token length:" << m_accessToken.length();
+    
+    m_settings->setValue("auth/access_token", m_accessToken);
+    m_settings->setValue("auth/refresh_token", m_refreshToken);
+    m_settings->sync();
+    
+    qDebug() << "Sync status:" << m_settings->status();
+     qDebug() << "All keys after save:" << m_settings->allKeys();
+    qDebug() << "✅ Tokens saved";
+}
  
  void TwitchAuthManager::loadTokens()
  {
+     qDebug() << "=== Loading OAuth tokens ===";
+     qDebug() << "Settings file:" << m_settings->fileName();
+     qDebug() << "All keys:" << m_settings->allKeys();
+     
      m_accessToken = m_settings->value("auth/access_token").toString();
      m_refreshToken = m_settings->value("auth/refresh_token").toString();
      
      if (!m_accessToken.isEmpty()) {
-         qDebug() << "Loaded access token from settings (length:" << m_accessToken.length() << ")";
-        qDebug() << "  Token starts with:" << m_accessToken.left(10) << "...";
+        qDebug() << "✅ Loaded access token (length:" << m_accessToken.length() << ")";
+         qDebug() << "  Token starts with:" << m_accessToken.left(10) << "...";
+     } else {
+        qDebug() << "❌ No access token found";
      }
  }
  

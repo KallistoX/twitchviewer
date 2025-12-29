@@ -46,6 +46,13 @@ MainView {
         }
     }
 
+    Component.onDestruction: {
+        console.log("MainView being destroyed - stopping video player")
+        if (videoPlayer.playbackState === MediaPlayer.PlayingState) {
+            videoPlayer.stop()
+        }
+    }
+
     // Connections to TwitchStreamFetcher signals
     Connections {
         target: twitchFetcher
@@ -136,6 +143,13 @@ MainView {
                             id: videoPlayer
                             anchors.fill: parent
                             autoPlay: false
+                            
+                            Component.onDestruction: {
+                                console.log("Video player being destroyed - stopping playback")
+                                if (playbackState === MediaPlayer.PlayingState) {
+                                    stop()
+                                }
+                            }
                             
                             onStatusChanged: {
                                 console.log("Video status:", status)

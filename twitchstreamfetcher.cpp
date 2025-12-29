@@ -21,6 +21,8 @@
  #include <QUrlQuery>
  #include <QUrl>
  #include <QDebug>
+ #include <QStandardPaths>
+ #include <QDir>
  
  // Twitch API Constants
  const QString TwitchStreamFetcher::TWITCH_GQL_URL = "https://gql.twitch.tv/gql";
@@ -32,7 +34,6 @@
      : QObject(parent)
      , m_networkManager(new QNetworkAccessManager(this))
      , m_authManager(nullptr)
-     , m_settings(new QSettings("kallisto-app", "twitchviewer", this))
      , m_isValidatingToken(false)
      , m_debugShowAds("N/A")
      , m_debugHideAds("N/A")
@@ -42,9 +43,28 @@
      , m_debugTurbo("N/A")
      , m_debugAdblock("N/A")
  {
+     // CRITICAL FIX: Use AppDataLocation for Ubuntu Touch confinement
+     QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+     
+     // Ensure directory exists
+     QDir().mkpath(dataPath);
+     
+     QString settingsFile = dataPath + "/twitchviewer.conf";
+     m_settings = new QSettings(settingsFile, QSettings::NativeFormat, this);
+     
+     qDebug() << "=== TwitchStreamFetcher Settings ===";
+     qDebug() << "Settings file:" << m_settings->fileName();
+     qDebug() << "AppDataLocation:" << dataPath;
+     
      // Load cached tokens
      loadClientIntegrity();
      loadGraphQLToken();
+     
+     // Emit initial state after loading
+     if (!m_graphQLToken.isEmpty()) {
+         qDebug() << "GraphQL token loaded at startup, emitting signal";
+         emit graphQLTokenChanged();
+     }
  }
  
  TwitchStreamFetcher::~TwitchStreamFetcher()
@@ -117,19 +137,31 @@
  
  void TwitchStreamFetcher::loadGraphQLToken()
  {
+     qDebug() << "=== Loading GraphQL token ===";
+     qDebug() << "Settings file:" << m_settings->fileName();
+     qDebug() << "All keys:" << m_settings->allKeys();
+     
      m_graphQLToken = m_settings->value("auth/graphql_token").toString();
      
      if (!m_graphQLToken.isEmpty()) {
-         qDebug() << "Loaded GraphQL token from settings (length:" << m_graphQLToken.length() << ")";
-         emit graphQLTokenChanged();
+         qDebug() << "✅ Loaded GraphQL token (length:" << m_graphQLToken.length() << ")";
+     } else {
+         qDebug() << "❌ No GraphQL token in settings";
      }
  }
  
  void TwitchStreamFetcher::saveGraphQLToken()
  {
+     qDebug() << "=== Saving GraphQL token ===";
+     qDebug() << "Settings file:" << m_settings->fileName();
+     qDebug() << "Token length:" << m_graphQLToken.length();
+     
      m_settings->setValue("auth/graphql_token", m_graphQLToken);
      m_settings->sync();
-     qDebug() << "GraphQL token saved to settings";
+     
+     qDebug() << "Sync status:" << m_settings->status();
+     qDebug() << "All keys after save:" << m_settings->allKeys();
+     qDebug() << "✅ GraphQL token saved";
  }
  
  // ========================================
