@@ -29,6 +29,7 @@
  const QString TwitchStreamFetcher::TWITCH_INTEGRITY_URL = "https://gql.twitch.tv/integrity";
  const QString TwitchStreamFetcher::TWITCH_USHER_URL = "https://usher.ttvnw.net/api/channel/hls/%1.m3u8";
  const QString TwitchStreamFetcher::PERSISTED_QUERY_HASH = "0828119ded1c13477966434e15800ff57ddacf13ba1911c129dc2200705b0712";
+ const QString TwitchStreamFetcher::PERSISTED_QUERY_HASH_USER = "3cff634f43c5c78830907a662b315b1847cfc0dce32e6a9752e7f5d70b37f8c0";
  
  TwitchStreamFetcher::TwitchStreamFetcher(QObject *parent)
      : QObject(parent)
@@ -59,12 +60,11 @@
      // Load cached tokens
      loadClientIntegrity();
      loadGraphQLToken();
-     
-     // Emit initial state after loading
-     if (!m_graphQLToken.isEmpty()) {
-         qDebug() << "GraphQL token loaded at startup, emitting signal";
-         emit graphQLTokenChanged();
-     }
+            
+        if (!m_graphQLToken.isEmpty()) {
+            emit graphQLTokenChanged();
+            requestUserInfo();
+    }
  }
  
  TwitchStreamFetcher::~TwitchStreamFetcher()
@@ -97,43 +97,42 @@
      emit graphQLTokenChanged();
  }
  
- void TwitchStreamFetcher::clearGraphQLToken()
- {
-     m_graphQLToken.clear();
-     m_settings->remove("auth/graphql_token");
-     m_settings->sync();
-     
-     // Reset debug info
-     m_debugShowAds = "N/A";
-     m_debugHideAds = "N/A";
-     m_debugPrivileged = "N/A";
-     m_debugRole = "N/A";
-     m_debugSubscriber = "N/A";
-     m_debugTurbo = "N/A";
-     m_debugAdblock = "N/A";
-     
-     qDebug() << "GraphQL token cleared";
-     emit graphQLTokenChanged();
-     emit debugInfoChanged();
- }
- 
- void TwitchStreamFetcher::validateGraphQLToken()
- {
-     if (m_graphQLToken.isEmpty()) {
-         emit tokenValidationFailed("No token to validate");
-         return;
-     }
-     
-     qDebug() << "Validating GraphQL token with test query...";
-     m_isValidatingToken = true;
-     emit validatingTokenChanged();
-     
-     // Use a known live channel for testing
-     m_currentChannel = "esl_csgo";
-     m_requestedQuality = "best";
-     
-     requestPlaybackToken(m_currentChannel, false);
- }
+void TwitchStreamFetcher::clearGraphQLToken()
+{
+    m_graphQLToken.clear();
+    m_settings->remove("auth/graphql_token");
+    m_settings->sync();
+    
+    // NEU: Clear user info
+    m_currentUserId.clear();
+    m_currentUserLogin.clear();
+    m_currentUserDisplayName.clear();
+    m_currentUserProfileImage.clear();
+    
+    // Reset debug info
+    m_debugShowAds = "N/A";
+    m_debugHideAds = "N/A";
+    m_debugPrivileged = "N/A";
+    m_debugRole = "N/A";
+    m_debugSubscriber = "N/A";
+    m_debugTurbo = "N/A";
+    m_debugAdblock = "N/A";
+    
+    qDebug() << "GraphQL token and user info cleared";
+    emit graphQLTokenChanged();
+    emit currentUserChanged();  // NEU
+    emit debugInfoChanged();
+}
+
+ void TwitchStreamFetcher::validateGraphQLToken() {
+    if (m_graphQLToken.isEmpty()) {
+        emit tokenValidationFailed("No token to validate");
+        return;
+    }
+    m_isValidatingToken = true;
+    emit validatingTokenChanged();
+    requestUserInfo();
+}
  
  void TwitchStreamFetcher::loadGraphQLToken()
  {
@@ -520,38 +519,58 @@
      requestPlaybackToken(m_currentChannel, true);
  }
  
- void TwitchStreamFetcher::parseDebugInfo(const QString &tokenValue)
- {
-     // Token value is a JSON string, parse it
-     QJsonDocument doc = QJsonDocument::fromJson(tokenValue.toUtf8());
-     if (doc.isNull() || !doc.isObject()) {
-         qDebug() << "Could not parse token for debug info";
-         return;
-     }
-     
-     QJsonObject obj = doc.object();
-     
-     // Extract debug fields
-     m_debugShowAds = obj["show_ads"].toBool() ? "true" : "false";
-     m_debugHideAds = obj["hide_ads"].toBool() ? "true" : "false";
-     m_debugPrivileged = obj["privileged"].toBool() ? "true" : "false";
-     m_debugRole = obj["role"].toString();
-     m_debugSubscriber = obj["subscriber"].toBool() ? "true" : "false";
-     m_debugTurbo = obj["turbo"].toBool() ? "true" : "false";
-     m_debugAdblock = obj["adblock"].toBool() ? "true" : "false";
-     
-     qDebug() << "=== Debug Info ===";
-     qDebug() << "Show Ads:" << m_debugShowAds;
-     qDebug() << "Hide Ads:" << m_debugHideAds;
-     qDebug() << "Privileged:" << m_debugPrivileged;
-     qDebug() << "Role:" << m_debugRole;
-     qDebug() << "Subscriber:" << m_debugSubscriber;
-     qDebug() << "Turbo:" << m_debugTurbo;
-     qDebug() << "Adblock:" << m_debugAdblock;
-     qDebug() << "==================";
-     
-     emit debugInfoChanged();
- }
+void TwitchStreamFetcher::parseDebugInfo(const QString &tokenValue)
+{
+    qDebug() << "=== Parsing Token Value ===";
+    qDebug() << "Raw token value:" << tokenValue;
+    qDebug() << "===========================";
+    
+    // Token value is a JSON string, parse it
+    QJsonDocument doc = QJsonDocument::fromJson(tokenValue.toUtf8());
+    if (doc.isNull() || !doc.isObject()) {
+        qDebug() << "Could not parse token for debug info";
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    
+    // Log all fields for debugging
+    qDebug() << "=== All Token Fields ===";
+    for (const QString &key : obj.keys()) {
+        QJsonValue value = obj[key];
+        if (value.isBool()) {
+            qDebug() << key << ":" << value.toBool();
+        } else if (value.isString()) {
+            qDebug() << key << ":" << value.toString();
+        } else if (value.isDouble()) {
+            qDebug() << key << ":" << value.toDouble();
+        } else {
+            qDebug() << key << ":" << value;
+        }
+    }
+    qDebug() << "========================";
+    
+    // Extract debug fields with better null handling
+    m_debugShowAds = obj.contains("show_ads") ? (obj["show_ads"].toBool() ? "true" : "false") : "N/A";
+    m_debugHideAds = obj.contains("hide_ads") ? (obj["hide_ads"].toBool() ? "true" : "false") : "N/A";
+    m_debugPrivileged = obj.contains("privileged") ? (obj["privileged"].toBool() ? "true" : "false") : "N/A";
+    m_debugRole = obj.contains("role") ? obj["role"].toString() : "N/A";
+    m_debugSubscriber = obj.contains("subscriber") ? (obj["subscriber"].toBool() ? "true" : "false") : "N/A";
+    m_debugTurbo = obj.contains("turbo") ? (obj["turbo"].toBool() ? "true" : "false") : "N/A";
+    m_debugAdblock = obj.contains("adblock") ? (obj["adblock"].toBool() ? "true" : "false") : "N/A";
+    
+    qDebug() << "=== Extracted Debug Info ===";
+    qDebug() << "Show Ads:" << m_debugShowAds;
+    qDebug() << "Hide Ads:" << m_debugHideAds;
+    qDebug() << "Privileged:" << m_debugPrivileged;
+    qDebug() << "Role:" << m_debugRole;
+    qDebug() << "Subscriber:" << m_debugSubscriber;
+    qDebug() << "Turbo:" << m_debugTurbo;
+    qDebug() << "Adblock:" << m_debugAdblock;
+    qDebug() << "============================";
+    
+    emit debugInfoChanged();
+}
  
  void TwitchStreamFetcher::requestPlaylist(const QString &token, const QString &signature, const QString &channelName)
  {
@@ -612,48 +631,102 @@
     emit statusUpdate("Stream ready!");
     emit streamUrlReady(streamUrl, m_currentChannel);
  }
- 
- QString TwitchStreamFetcher::parseM3U8Playlist(const QString &m3u8Content, const QString &quality)
- {
-     QStringList lines = m3u8Content.split('\n');
-     
-     // Quality mapping
-     QMap<QString, QString> qualityMap;
-     qualityMap["best"] = "1080p";
-     qualityMap["source"] = "1080p";
-     qualityMap["high"] = "720p";
-     qualityMap["medium"] = "480p";
-     qualityMap["low"] = "360p";
-     qualityMap["mobile"] = "160p";
-     
-     QString targetResolution = qualityMap.value(quality.toLower(), "1080p");
-     
-     qDebug() << "Looking for quality:" << quality << "-> resolution:" << targetResolution;
-     
-     // First, try to find exact match
-     QString url = extractUrlFromM3U8(m3u8Content, targetResolution);
-     if (!url.isEmpty()) {
-         return url;
-     }
-     
-     // If not found, return the first (best) quality
-     for (int i = 0; i < lines.size(); i++) {
-         QString line = lines[i].trimmed();
-         
-         if (line.startsWith("#EXT-X-STREAM-INF")) {
-             // Next line should be the URL
-             if (i + 1 < lines.size()) {
-                 QString nextLine = lines[i + 1].trimmed();
-                 if (nextLine.startsWith("http")) {
-                     qDebug() << "Using first available quality";
-                     return nextLine;
-                 }
-             }
-         }
-     }
-     
-     return QString();
- }
+
+QString TwitchStreamFetcher::parseM3U8Playlist(const QString &m3u8Content, const QString &quality)
+{
+    QStringList lines = m3u8Content.split('\n');
+    
+    // Clear previous cache
+    m_qualityUrls.clear();
+    m_availableQualities.clear();
+    
+    // Parse ALL qualities from playlist
+    for (int i = 0; i < lines.size(); i++) {
+        QString line = lines[i].trimmed();
+        
+        if (line.startsWith("#EXT-X-STREAM-INF")) {
+            // Extract quality name from line
+            QString qualityName = "unknown";
+            
+            // Try to extract resolution
+            if (line.contains("RESOLUTION=1920x1080")) {
+                qualityName = "1080p (Source)";
+            } else if (line.contains("RESOLUTION=1280x720")) {
+                qualityName = "720p (High)";
+            } else if (line.contains("RESOLUTION=852x480") || line.contains("RESOLUTION=640x480")) {
+                qualityName = "480p (Medium)";
+            } else if (line.contains("RESOLUTION=640x360")) {
+                qualityName = "360p (Low)";
+            } else if (line.contains("RESOLUTION=284x160") || line.contains("RESOLUTION=160x")) {
+                qualityName = "160p (Mobile)";
+            } else if (line.contains("audio_only")) {
+                qualityName = "Audio Only";
+            }
+            
+            // Next line should be the URL
+            if (i + 1 < lines.size()) {
+                QString nextLine = lines[i + 1].trimmed();
+                if (nextLine.startsWith("http")) {
+                    m_qualityUrls[qualityName] = nextLine;
+                    m_availableQualities.append(qualityName);
+                    
+                    qDebug() << "  Found quality:" << qualityName;
+                }
+            }
+        }
+    }
+    
+    // Emit signal that qualities are available
+    if (!m_availableQualities.isEmpty()) {
+        qDebug() << "✅ Cached" << m_availableQualities.size() << "quality options";
+        emit availableQualitiesChanged(m_availableQualities);
+    }
+    
+    // Quality mapping for "best", "source", etc.
+    QMap<QString, QString> qualityMap;
+    qualityMap["best"] = "1080p";
+    qualityMap["source"] = "1080p";
+    qualityMap["high"] = "720p";
+    qualityMap["medium"] = "480p";
+    qualityMap["low"] = "360p";
+    qualityMap["mobile"] = "160p";
+    
+    QString targetResolution = qualityMap.value(quality.toLower(), "1080p");
+    
+    qDebug() << "Looking for quality:" << quality << "-> resolution:" << targetResolution;
+    
+    // Try to find exact match
+    for (const QString &qualName : m_availableQualities) {
+        if (qualName.contains(targetResolution, Qt::CaseInsensitive)) {
+            return m_qualityUrls[qualName];
+        }
+    }
+    
+    // If not found, return the first (best) quality
+    if (!m_availableQualities.isEmpty()) {
+        qDebug() << "Using first available quality:" << m_availableQualities.first();
+        return m_qualityUrls[m_availableQualities.first()];
+    }
+    
+    return QString();
+}
+
+QString TwitchStreamFetcher::getQualityUrl(const QString &quality) const
+{
+    // Try direct match first
+    if (m_qualityUrls.contains(quality)) {
+        return m_qualityUrls[quality];
+    }
+    
+    // Try fuzzy match (e.g. "720p" matches "720p (High)")
+    for (const QString &key : m_qualityUrls.keys()) {
+        if (key.contains(quality, Qt::CaseInsensitive)) {
+            return m_qualityUrls[key];
+        }
+    }
+    
+    return QString();
+}
  
  QString TwitchStreamFetcher::extractUrlFromM3U8(const QString &m3u8Content, const QString &resolution)
  {
@@ -685,6 +758,213 @@
      
      return QString();
  }
+
+ // ========================================
+// User Info Methods - TWO STEP APPROACH
+// ========================================
+
+void TwitchStreamFetcher::fetchCurrentUser()
+{
+    if (m_graphQLToken.isEmpty()) {
+        qWarning() << "Cannot fetch user info without GraphQL token";
+        return;
+    }
+    
+    qDebug() << "Fetching current user info (step 1: get user ID)...";
+    requestUserInfo();
+}
+
+void TwitchStreamFetcher::requestUserInfo()
+{
+    QUrl url(TWITCH_GQL_URL);
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    
+    // Use public Client-ID and GraphQL token
+    request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
+    request.setRawHeader("Authorization", QString("OAuth %1").arg(m_graphQLToken).toUtf8());
+    
+    // Build GraphQL query for UserMenuCurrentUser (just to get ID)
+    QJsonObject persistedQuery;
+    persistedQuery["version"] = 1;
+    persistedQuery["sha256Hash"] = PERSISTED_QUERY_HASH_USER;
+    
+    QJsonObject extensions;
+    extensions["persistedQuery"] = persistedQuery;
+    
+    QJsonObject payload;
+    payload["operationName"] = "UserMenuCurrentUser";
+    payload["variables"] = QJsonObject();
+    payload["extensions"] = extensions;
+    
+    QJsonDocument doc(payload);
+    QByteArray data = doc.toJson(QJsonDocument::Compact);
+    
+    qDebug() << "Sending UserMenuCurrentUser query (step 1: get ID only)...";
+    
+    QNetworkReply *reply = m_networkManager->post(request, data);
+    
+    // Store that this is first step
+    reply->setProperty("isFirstStep", true);
+    
+    connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onUserInfoReceived);
+}
+
+void TwitchStreamFetcher::requestUserDetails(const QString &userId)
+{
+    // Use Twitch Helix REST API instead of GetUserByConnection
+    QUrl url(QString("https://api.twitch.tv/helix/users?id=%1").arg(userId));
+    QNetworkRequest request(url);
+    
+    // Use public Client-ID and GraphQL token
+    request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
+    request.setRawHeader("Authorization", QString("Bearer %1").arg(m_graphQLToken).toUtf8());
+    
+    qDebug() << "Fetching user details via Helix API (step 2) for user ID:" << userId;
+    
+    QNetworkReply *reply = m_networkManager->get(request);
+    
+    // Mark as second step
+    reply->setProperty("isFirstStep", false);
+    
+    connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onUserInfoReceived);
+}
+
+void TwitchStreamFetcher::onUserInfoReceived()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    
+    bool isFirstStep = reply->property("isFirstStep").toBool();
+    
+    reply->deleteLater();
+    
+    if (reply->error() != QNetworkReply::NoError) {
+        qWarning() << "Failed to fetch user info (step" << (isFirstStep ? "1" : "2") << "):" << reply->errorString();
+        
+        if (m_isValidatingToken) {
+            m_isValidatingToken = false;
+            emit validatingTokenChanged();
+            emit tokenValidationFailed("Failed to validate token: " + reply->errorString());
+        }
+        return;
+    }
+    
+    QByteArray responseData = reply->readAll();
+    qDebug() << "=== User Info Response (step" << (isFirstStep ? "1" : "2") << ") ===";
+    qDebug() << responseData;
+    qDebug() << "====================================";
+    
+    QJsonDocument doc = QJsonDocument::fromJson(responseData);
+    
+    if (doc.isNull() || !doc.isObject()) {
+        if (m_isValidatingToken) {
+            m_isValidatingToken = false;
+            emit validatingTokenChanged();
+            emit tokenValidationFailed("Invalid response from Twitch");
+        }
+        return;
+    }
+    
+    QJsonObject root = doc.object();
+    
+    // Check for errors
+    if (root.contains("errors")) {
+        QJsonArray errors = root["errors"].toArray();
+        if (!errors.isEmpty()) {
+            QString errorMsg = errors[0].toObject()["message"].toString();
+            qWarning() << "Twitch API error:" << errorMsg;
+            
+            if (m_isValidatingToken) {
+                m_isValidatingToken = false;
+                emit validatingTokenChanged();
+                emit tokenValidationFailed("Twitch error: " + errorMsg);
+            }
+            return;
+        }
+    }
+    
+    QJsonObject data = root["data"].toObject();
+    
+    if (isFirstStep) {
+        // Step 1: Extract user ID from UserMenuCurrentUser
+        QJsonObject currentUser = data["currentUser"].toObject();
+        
+        if (currentUser.isEmpty() || currentUser["id"].toString().isEmpty()) {
+            if (m_isValidatingToken) {
+                m_isValidatingToken = false;
+                emit validatingTokenChanged();
+                emit tokenValidationFailed("Token is invalid or user not found");
+            }
+            return;
+        }
+        
+        QString userId = currentUser["id"].toString();
+        qDebug() << "✅ Got user ID:" << userId << "- fetching details...";
+        
+        // Store ID temporarily
+        m_currentUserId = userId;
+        
+        // Also get profile image from this response (if available)
+        if (currentUser.contains("profileImageURL")) {
+            m_currentUserProfileImage = currentUser["profileImageURL"].toString();
+            qDebug() << "  Also got profile image URL from step 1";
+        }
+        
+        // Now fetch full details
+        requestUserDetails(userId);
+        
+    } else {
+        // Step 2: Extract full details from Helix API
+        // Helix format: { "data": [ { "id": "...", "login": "...", "display_name": "...", "profile_image_url": "..." } ] }
+        QJsonArray users = data["data"].toArray();
+        
+        if (users.isEmpty()) {
+            qWarning() << "User details not found in step 2 response";
+            
+            if (m_isValidatingToken) {
+                m_isValidatingToken = false;
+                emit validatingTokenChanged();
+                emit tokenValidationFailed("Failed to get user details");
+            }
+            return;
+        }
+        
+        QJsonObject user = users[0].toObject();
+        
+        // Store user info from Helix API
+        // Note: Keep m_currentUserId from step 1 (it's already set)
+        m_currentUserLogin = user["login"].toString();
+        m_currentUserDisplayName = user["display_name"].toString();
+        
+        // Use profile_image_url if we don't have profileImageURL from step 1
+        if (m_currentUserProfileImage.isEmpty() && user.contains("profile_image_url")) {
+            m_currentUserProfileImage = user["profile_image_url"].toString();
+        }
+        
+        qDebug() << "✅ User details received from Helix API:";
+        qDebug() << "  ID:" << m_currentUserId;
+        qDebug() << "  Login:" << m_currentUserLogin;
+        qDebug() << "  Display Name:" << m_currentUserDisplayName;
+        qDebug() << "  Profile Image:" << m_currentUserProfileImage;
+        
+        emit currentUserChanged();
+        
+        if (m_isValidatingToken) {
+            m_isValidatingToken = false;
+            emit validatingTokenChanged();
+            
+            QString message = "✅ Token valid!\n\n";
+            message += "Logged in as: " + m_currentUserDisplayName;
+            if (!m_currentUserLogin.isEmpty()) {
+                message += " (@" + m_currentUserLogin + ")";
+            }
+            message += "\nUser ID: " + m_currentUserId;
+            
+            emit tokenValidationSuccess(message);
+        }
+    }
+}
  
  // ========================================
  // Client-Integrity Token Management

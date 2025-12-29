@@ -35,6 +35,13 @@
  class TwitchStreamFetcher : public QObject
  {
      Q_OBJECT
+
+     // User Info Properties
+     Q_PROPERTY(QString currentUserId READ currentUserId NOTIFY currentUserChanged)
+     Q_PROPERTY(QString currentUserLogin READ currentUserLogin NOTIFY currentUserChanged)
+     Q_PROPERTY(QString currentUserDisplayName READ currentUserDisplayName NOTIFY currentUserChanged)
+     Q_PROPERTY(QString currentUserProfileImage READ currentUserProfileImage NOTIFY currentUserChanged)
+     Q_PROPERTY(bool hasUserInfo READ hasUserInfo NOTIFY currentUserChanged)
  
      // Debug properties for displaying in Settings
      Q_PROPERTY(QString debugShowAds READ debugShowAds NOTIFY debugInfoChanged)
@@ -59,12 +66,26 @@
      // Main method to fetch stream URL
      Q_INVOKABLE void fetchStreamUrl(const QString &channelName, const QString &quality = "best");
  
+     // Get available qualities from last fetched playlist
+     Q_INVOKABLE QStringList getAvailableQualities() const { return m_availableQualities; }
+     Q_INVOKABLE QString getQualityUrl(const QString &quality) const;
+
      // GraphQL Token Management
      Q_INVOKABLE void setGraphQLToken(const QString &token);
      Q_INVOKABLE void clearGraphQLToken();
      Q_INVOKABLE void validateGraphQLToken();
      Q_INVOKABLE QString getGraphQLToken() const { return m_graphQLToken; }
  
+     // User Info
+     Q_INVOKABLE void fetchCurrentUser();
+     
+     // User Info property getters
+     QString currentUserId() const { return m_currentUserId; }
+     QString currentUserLogin() const { return m_currentUserLogin; }
+     QString currentUserDisplayName() const { return m_currentUserDisplayName; }
+     QString currentUserProfileImage() const { return m_currentUserProfileImage; }
+     bool hasUserInfo() const { return !m_currentUserId.isEmpty(); }
+
      // Debug property getters
      QString debugShowAds() const { return m_debugShowAds; }
      QString debugHideAds() const { return m_debugHideAds; }
@@ -82,11 +103,17 @@
      // Emitted when stream URL is ready
      void streamUrlReady(const QString &url, const QString &channelName);
      
+     // Emitted when available qualities are ready
+     void availableQualitiesChanged(const QStringList &qualities);
+     
      // Emitted when an error occurs
      void error(const QString &message);
      
      // Emitted with status updates
      void statusUpdate(const QString &status);
+
+     // Emitted when current user info changes
+     void currentUserChanged();
  
      // Emitted when debug info changes
      void debugInfoChanged();
@@ -111,8 +138,11 @@
      // Handle Client-Integrity token response
      void onClientIntegrityReceived();
  
-     // Handle token validation response
+     // Handle token validation response (old method - still used)
      void onTokenValidationReceived();
+
+     // Handle user info response (UserMenuCurrentUser query)
+     void onUserInfoReceived();
  
  private:
      // Network manager
@@ -128,6 +158,16 @@
      QString m_currentChannel;
      QString m_requestedQuality;
      bool m_isValidatingToken;
+     
+     // Quality caching (from last M3U8 playlist)
+     QMap<QString, QString> m_qualityUrls;  // quality name -> URL
+     QStringList m_availableQualities;      // ordered list
+     
+     // Current user info
+     QString m_currentUserId;
+     QString m_currentUserLogin;
+     QString m_currentUserDisplayName;
+     QString m_currentUserProfileImage;
      
      // GraphQL Token (from browser cookie)
      QString m_graphQLToken;
@@ -151,11 +191,14 @@
      static const QString TWITCH_INTEGRITY_URL;
      static const QString TWITCH_USHER_URL;
      static const QString PERSISTED_QUERY_HASH;
+     static const QString PERSISTED_QUERY_HASH_USER;
      
      // Helper methods
      void requestPlaybackToken(const QString &channelName, bool withIntegrity = false);
      void requestClientIntegrity();
      void requestPlaylist(const QString &token, const QString &signature, const QString &channelName);
+     void requestUserInfo();
+     void requestUserDetails(const QString &userId);
      QString parseM3U8Playlist(const QString &m3u8Content, const QString &quality);
      QString extractUrlFromM3U8(const QString &m3u8Content, const QString &resolution);
      void parseDebugInfo(const QString &tokenValue);

@@ -22,6 +22,7 @@
 #include <QQmlContext>
 #include "twitchstreamfetcher.h"
 #include "twitchauthmanager.h"
+#include "twitchhelixapi.h"
 
 int main(int argc, char *argv[])
 {
@@ -39,11 +40,16 @@ int main(int argc, char *argv[])
     streamFetcher->setAuthManager(authManager);
     qDebug() << "TwitchStreamFetcher created and auth manager linked";
 
+    // Create Helix API client
+    TwitchHelixAPI *helixApi = new TwitchHelixAPI(app);
+    qDebug() << "TwitchHelixAPI created";
+
     QQuickView *view = new QQuickView();
     
-    // Make both available in QML
+    // Make all available in QML
     view->rootContext()->setContextProperty("authManager", authManager);
     view->rootContext()->setContextProperty("twitchFetcher", streamFetcher);
+    view->rootContext()->setContextProperty("helixApi", helixApi);
     
     qDebug() << "Context properties set";
     
