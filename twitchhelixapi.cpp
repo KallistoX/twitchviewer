@@ -247,15 +247,16 @@ QNetworkRequest TwitchHelixAPI::createRequest(const QString &endpoint, const QSt
     QUrl url(HELIX_BASE_URL + endpoint);
     QNetworkRequest request(url);
     
-    // Always use public Client-ID for Helix API
-    request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
-    
-    // Add auth token ONLY if provided (not required for public endpoints)
+    // CRITICAL: Client-ID must match the token's origin!
     if (!authToken.isEmpty()) {
+        // With OAuth: Use our custom Client-ID (token was generated with this)
+        request.setRawHeader("Client-ID", Config::TWITCH_CLIENT_ID.toUtf8());
         request.setRawHeader("Authorization", QString("Bearer %1").arg(authToken).toUtf8());
-        qDebug() << "Helix API request WITH OAuth token";
+        qDebug() << "Helix API: Using custom Client-ID with OAuth token";
     } else {
-        qDebug() << "Helix API request WITHOUT OAuth token (public endpoint)";
+        // Without OAuth: Use public Client-ID for anonymous requests
+        request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
+        qDebug() << "Helix API: Using public Client-ID (anonymous)";
     }
     
     return request;

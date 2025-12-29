@@ -35,13 +35,14 @@ MainView {
         console.log("authManager exists:", typeof authManager !== 'undefined')
         console.log("helixApi exists:", typeof helixApi !== 'undefined')
         
-        // Fetch user info if GraphQL token exists
+        // FIXED: Only fetch user info ONCE, and only if we have GraphQL token
+        // (Constructor no longer auto-fetches)
         if (typeof twitchFetcher !== 'undefined' && twitchFetcher.hasGraphQLToken) {
-            console.log("GraphQL token found, fetching user info...")
+            console.log("GraphQL token found, fetching user info once...")
             twitchFetcher.fetchCurrentUser()
         }
         
-        // Load top games for anonymous browsing
+        // Load top games (will use OAuth token if available, otherwise anonymous)
         if (typeof helixApi !== 'undefined') {
             console.log("Loading top games...")
             helixApi.getTopGames(20)
@@ -120,6 +121,14 @@ MainView {
                                 fillMode: Image.PreserveAspectCrop
                                 visible: source != ""
                                 smooth: true
+                                
+                                onStatusChanged: {
+                                    if (status === Image.Error) {
+                                        console.error("Failed to load profile image:", source)
+                                    } else if (status === Image.Ready) {
+                                        console.log("✅ Profile image loaded successfully")
+                                    }
+                                }
                             }
                             
                             Icon {
@@ -390,6 +399,37 @@ MainView {
                         channelName: channelName,
                         requestedQuality: quality
                     })
+                }
+                
+                // Helix API connections - MUST be inside homePage to access categoryModel
+                Connections {
+                    target: helixApi
+                    ignoreUnknownSignals: true
+                    
+                    onTopGamesReceived: {
+                        console.log("Top games received:", games.length)
+                        categoryModel.clear()
+                        
+                        for (var i = 0; i < games.length; i++) {
+                            var game = games[i]
+                            var boxArtUrl = game.box_art_url
+                            // Replace placeholders with actual dimensions
+                            boxArtUrl = boxArtUrl.replace("{width}", "285")
+                            boxArtUrl = boxArtUrl.replace("{height}", "380")
+                            
+                            categoryModel.append({
+                                id: game.id,
+                                name: game.name,
+                                boxArtUrl: boxArtUrl
+                            })
+                        }
+                        
+                        console.log("Category model populated with", categoryModel.count, "items")
+                    }
+                    
+                    onError: {
+                        console.error("Helix API error:", message)
+                    }
                 }
             }
         }
@@ -705,41 +745,6 @@ MainView {
                     }
                 }
             }
-        }
-    }
-    
-    // ========================================
-    // API CONNECTIONS
-    // ========================================
-    
-    // Helix API for top games
-    Connections {
-        target: helixApi
-        ignoreUnknownSignals: true
-        
-        onTopGamesReceived: {
-            console.log("Top games received:", games.length)
-            categoryModel.clear()
-            
-            for (var i = 0; i < games.length; i++) {
-                var game = games[i]
-                var boxArtUrl = game.box_art_url
-                // Replace placeholders with actual dimensions
-                boxArtUrl = boxArtUrl.replace("{width}", "285")
-                boxArtUrl = boxArtUrl.replace("{height}", "380")
-                
-                categoryModel.append({
-                    id: game.id,
-                    name: game.name,
-                    boxArtUrl: boxArtUrl
-                })
-            }
-            
-            console.log("Category model populated with", categoryModel.count, "items")
-        }
-        
-        onError: {
-            console.error("Helix API error:", message)
         }
     }
     

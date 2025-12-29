@@ -61,9 +61,11 @@
      loadClientIntegrity();
      loadGraphQLToken();
             
+     // REMOVED: Don't auto-fetch user info in constructor
+     // Let Main.qml decide when to fetch
         if (!m_graphQLToken.isEmpty()) {
             emit graphQLTokenChanged();
-            requestUserInfo();
+         qDebug() << "GraphQL token loaded, waiting for explicit fetch request";
     }
  }
  
@@ -103,7 +105,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
     m_settings->remove("auth/graphql_token");
     m_settings->sync();
     
-    // NEU: Clear user info
+    // Clear user info
     m_currentUserId.clear();
     m_currentUserLogin.clear();
     m_currentUserDisplayName.clear();
@@ -120,7 +122,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
     
     qDebug() << "GraphQL token and user info cleared";
     emit graphQLTokenChanged();
-    emit currentUserChanged();  // NEU
+    emit currentUserChanged();
     emit debugInfoChanged();
 }
 
@@ -760,17 +762,20 @@ QString TwitchStreamFetcher::getQualityUrl(const QString &quality) const
  }
 
 // ========================================
-// User Info Methods - TWO STEP APPROACH
+// User Info Methods - SIMPLIFIED to use OAuth + Helix API only
 // ========================================
 
 void TwitchStreamFetcher::fetchCurrentUser()
 {
+    // SIMPLIFIED: Only use this for GraphQL token validation
+    // For actual user info, use Helix API via TwitchHelixAPI class
+    
     if (m_graphQLToken.isEmpty()) {
         qWarning() << "Cannot fetch user info without GraphQL token";
         return;
     }
     
-    qDebug() << "Fetching current user info (step 1: get user ID)...";
+    qDebug() << "Fetching current user info via GraphQL (ID only)...";
     requestUserInfo();
 }
 
@@ -800,7 +805,7 @@ void TwitchStreamFetcher::requestUserInfo()
     QJsonDocument doc(payload);
     QByteArray data = doc.toJson(QJsonDocument::Compact);
     
-    qDebug() << "Sending UserMenuCurrentUser query (step 1: get ID only)...";
+    qDebug() << "Sending UserMenuCurrentUser query (GraphQL - ID only)...";
     
     QNetworkReply *reply = m_networkManager->post(request, data);
     
@@ -816,17 +821,20 @@ void TwitchStreamFetcher::requestUserDetails(const QString &userId)
     QUrl url(QString("https://api.twitch.tv/helix/users?id=%1").arg(userId));
     QNetworkRequest request(url);
     
-    // Use public Client-ID
-    request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
-    
-    // ⭐ GEÄNDERT: Try OAuth token first (has user:read:email scope), fallback to GraphQL token
+    // CRITICAL FIX: Use correct Client-ID based on token source
     QString token;
+    QString clientId;
+    
     if (m_authManager && m_authManager->isAuthenticated()) {
+        // OAuth token -> use our custom Client-ID
         token = m_authManager->accessToken();
-        qDebug() << "Using OAuth token for user info (has user:read:email scope)";
+        clientId = Config::TWITCH_CLIENT_ID;
+        qDebug() << "Using OAuth token + custom Client-ID for user info";
     } else if (!m_graphQLToken.isEmpty()) {
+        // GraphQL token -> use public Client-ID
         token = m_graphQLToken;
-        qDebug() << "Using GraphQL token for user info";
+        clientId = Config::TWITCH_PUBLIC_CLIENT_ID;
+        qDebug() << "Using GraphQL token + public Client-ID for user info";
     } else {
         qWarning() << "No token available for user info request";
         if (m_isValidatingToken) {
@@ -837,6 +845,7 @@ void TwitchStreamFetcher::requestUserDetails(const QString &userId)
         return;
     }
     
+    request.setRawHeader("Client-ID", clientId.toUtf8());
     request.setRawHeader("Authorization", QString("Bearer %1").arg(token).toUtf8());
     
     qDebug() << "Fetching user details via Helix API (step 2) for user ID:" << userId;
@@ -860,6 +869,12 @@ void TwitchStreamFetcher::onUserInfoReceived()
     
     if (reply->error() != QNetworkReply::NoError) {
         qWarning() << "Failed to fetch user info (step" << (isFirstStep ? "1" : "2") << "):" << reply->errorString();
+        
+        // CRITICAL FIX: Even if step 2 fails, emit currentUserChanged if we have profile image from step 1
+        if (!isFirstStep && !m_currentUserProfileImage.isEmpty()) {
+            qDebug() << "Step 2 failed but we have profile image from step 1, emitting currentUserChanged anyway";
+            emit currentUserChanged();
+        }
         
         if (m_isValidatingToken) {
             m_isValidatingToken = false;
@@ -936,10 +951,18 @@ void TwitchStreamFetcher::onUserInfoReceived()
     } else {
         // Step 2: Extract full details from Helix API
         // Helix format: { "data": [ { "id": "...", "login": "...", "display_name": "...", "profile_image_url": "..." } ] }
-        QJsonArray users = data["data"].toArray();
+        
+        // CRITICAL FIX: root["data"] is already the array!
+        QJsonArray users = root["data"].toArray();
         
         if (users.isEmpty()) {
             qWarning() << "User details not found in step 2 response";
+            
+            // CRITICAL FIX: Still emit if we have profile image from step 1
+            if (!m_currentUserProfileImage.isEmpty()) {
+                qDebug() << "But we have profile image from step 1, emitting currentUserChanged";
+                emit currentUserChanged();
+            }
             
             if (m_isValidatingToken) {
                 m_isValidatingToken = false;
