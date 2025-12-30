@@ -317,7 +317,6 @@ Item {
             readonly property real pinch_out_log_max: 200
             
             // FIXED: Pinch to scale (minimize) - FULLSCREEN
-            // Only manual size/position changes during pinch, state change on release
             PinchHandler {
                 id: pinchHandler
                 target: null
@@ -334,13 +333,11 @@ Item {
                         gestureLayer.isPinching = false
                         console.log("Pinch finished, finalScale:", playerPage.currentScale)
                         
-                        // NOW snap to mini or fullscreen based on threshold
                         if (playerPage.currentScale < 0.5) {
                             console.log("Scale < 0.5, minimizing")
                             minimizePlayer()
                         } else {
                             console.log("Scale >= 0.5, staying fullscreen")
-                            // Animate back to fullscreen
                             playerPage.state = "fullscreen"
                         }
                     }
@@ -348,40 +345,50 @@ Item {
                 
                 onScaleChanged: {
                     if (active) {
-                        // LOGARITHMIC MAPPING with larger range
-                        // Maps scale [1 -> 100] to [0 -> 1]
-                        var logScale = Math.log(scale) / Math.log(100)  // scale=100 → logScale=1.0
-                        logScale = Math.max(0, logScale)  // Clamp negative values
+            // CRITICAL FIX: Handle pinch IN (scale < 1)
+            var targetScale
+            
+            if (scale < 1.0) {
+                // Pinch IN: fingers moving together
+                // scale goes from 1.0 → 0 (smaller)
+                // We want currentScale to go from startScale → 0
+                
+                // Invert: 1/scale goes from 1 → infinity as fingers close
+                var inverseScale = 1.0 / scale
+                
+                // Logarithmic mapping: inverseScale [1 → 100] maps to [0 → 1]
+                var logScale = Math.log(inverseScale) / Math.log(100)
+                logScale = Math.min(1, Math.max(0, logScale))
                         
-                        // Interpolate from startScale to 1.0 based on log progress
-                        var targetScale = gestureLayer.pinchStartScale + (1.0 - gestureLayer.pinchStartScale) * logScale
-                        
-                        // Clamp between 0 and 1
+                // Decrease from startScale towards 0
+                targetScale = gestureLayer.pinchStartScale * (1.0 - logScale)
+                
+            } else {
+                // Pinch OUT: fingers moving apart (should not happen in fullscreen, but handle it)
+                // scale > 1: just clamp to startScale (no growing in fullscreen)
+                targetScale = gestureLayer.pinchStartScale
+            }
+            
                         playerPage.currentScale = Math.max(0, Math.min(1, targetScale))
-                        
-                        // Update centroid
                         gestureLayer.pinchCentroid = centroid.position
-                        
-                        // Apply live scale
                         applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
                         
-                        // Debug
                         if (Math.random() < 0.1) {
-                            console.log("Pinch live (mini): pinchScale=" + scale.toFixed(2) + 
-                                        " logScale=" + logScale.toFixed(2) +
-                                        " currentScale=" + playerPage.currentScale.toFixed(2) +
-                                        " size=" + playerPage.width.toFixed(0) + "x" + playerPage.height.toFixed(0))
+                console.log("Pinch IN: scale=" + scale.toFixed(2) + 
+                            " logScale=" + (scale < 1 ? logScale.toFixed(2) : "N/A") +
+                            " current=" + playerPage.currentScale.toFixed(2))
                         }
                     }
                 }
             }
             
             // FIXED: Pinch to zoom - MINI MODE (maximize)
-            // Only manual size/position changes during pinch, state change on release
             PinchHandler {
                 id: miniPinchHandler
                 target: null
                 enabled: isMiniMode && !gestureLayer.isDragging
+    
+    readonly property real pinch_out_max: 1000  // ← Increased from 200!
                 
                 onActiveChanged: {
                     if (active) {
@@ -393,13 +400,11 @@ Item {
                         gestureLayer.isPinching = false
                         console.log("Pinch finished (mini), finalScale:", playerPage.currentScale)
                         
-                        // NOW snap to fullscreen or back to mini
                         if (playerPage.currentScale > 0.5) {
                             console.log("Scale > 0.5, maximizing")
                             maximizePlayer()
                         } else {
                             console.log("Scale <= 0.5, staying mini")
-                            // Animate back to mini
                             playerPage.state = "mini"
                         }
                     }
@@ -407,9 +412,12 @@ Item {
                 
                 onScaleChanged: {
                     if (active) {
-                        // Logarithmic mapping: scale [1 -> LOG_MAX] maps to [0 -> 1]
-                        var logScale = Math.log(scale) / Math.log(gestureLayer.pinch_out_log_max)
-                        logScale = Math.max(0, Math.min(1, logScale))  // Clamp to [0, 1]
+            // CRITICAL FIX: Clamp scale before log to prevent instant jumps
+            var clampedScale = Math.min(scale, pinch_out_max)
+            
+            // Logarithmic mapping: scale [1 → pinch_out_max] maps to [0 → 1]
+            var logScale = Math.log(clampedScale) / Math.log(pinch_out_max)
+            logScale = Math.max(0, Math.min(1, logScale))
                         
                         // Interpolate from startScale to 1.0
                         var targetScale = gestureLayer.pinchStartScale + (1.0 - gestureLayer.pinchStartScale) * logScale
@@ -419,7 +427,8 @@ Item {
                         applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
                         
                         if (Math.random() < 0.1) {
-                            console.log("Pinch (mini): scale=" + scale.toFixed(0) + 
+                console.log("Pinch OUT: scale=" + scale.toFixed(0) + 
+                            " clamped=" + clampedScale.toFixed(0) +
                                         " log=" + logScale.toFixed(2) +
                                         " current=" + playerPage.currentScale.toFixed(2))
                         }
