@@ -312,6 +312,9 @@ Item {
             property real swipeStartY: 0
             property point pinchCentroid: Qt.point(0, 0)
             property point dragStartPos
+    
+            readonly property real pinch_in_sensitivity: 0.7
+            readonly property real pinch_out_log_max: 200
             
             // FIXED: Pinch to scale (minimize) - FULLSCREEN
             // Only manual size/position changes during pinch, state change on release
@@ -345,21 +348,27 @@ Item {
                 
                 onScaleChanged: {
                     if (active) {
-                        // Pinch IN (scale < 1) = smaller
-                        var newScale = gestureLayer.pinchStartScale * scale
+                        // LOGARITHMIC MAPPING with larger range
+                        // Maps scale [1 -> 100] to [0 -> 1]
+                        var logScale = Math.log(scale) / Math.log(100)  // scale=100 → logScale=1.0
+                        logScale = Math.max(0, logScale)  // Clamp negative values
                         
-                        // Clamp between 0 (mini) and 1 (full)
-                        playerPage.currentScale = Math.max(0, Math.min(1, newScale))
+                        // Interpolate from startScale to 1.0 based on log progress
+                        var targetScale = gestureLayer.pinchStartScale + (1.0 - gestureLayer.pinchStartScale) * logScale
                         
-                        // Update centroid as fingers move
+                        // Clamp between 0 and 1
+                        playerPage.currentScale = Math.max(0, Math.min(1, targetScale))
+                        
+                        // Update centroid
                         gestureLayer.pinchCentroid = centroid.position
                         
-                        // CRITICAL: Only apply live scale during pinch, NO state changes
+                        // Apply live scale
                         applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
                         
                         // Debug
-                        if (Math.random() < 0.1) { // Log 10% of events to avoid spam
-                            console.log("Pinch live: pinchScale=" + scale.toFixed(2) + 
+                        if (Math.random() < 0.1) {
+                            console.log("Pinch live (mini): pinchScale=" + scale.toFixed(2) + 
+                                        " logScale=" + logScale.toFixed(2) +
                                         " currentScale=" + playerPage.currentScale.toFixed(2) +
                                         " size=" + playerPage.width.toFixed(0) + "x" + playerPage.height.toFixed(0))
                         }
@@ -398,27 +407,21 @@ Item {
                 
                 onScaleChanged: {
                     if (active) {
-                        // Scale starts at 1.0 when pinch begins
-                        // Pinch OUT (scale > 1) = maximize
-                        // Calculate delta from initial scale (1.0)
-                        var scaleDelta = scale - 1.0
-                        var newScale = gestureLayer.pinchStartScale + scaleDelta
+                        // Logarithmic mapping: scale [1 -> LOG_MAX] maps to [0 -> 1]
+                        var logScale = Math.log(scale) / Math.log(gestureLayer.pinch_out_log_max)
+                        logScale = Math.max(0, Math.min(1, logScale))  // Clamp to [0, 1]
                         
-                        // Clamp between 0 (mini) and 1 (full)
-                        playerPage.currentScale = Math.max(0, Math.min(1, newScale))
+                        // Interpolate from startScale to 1.0
+                        var targetScale = gestureLayer.pinchStartScale + (1.0 - gestureLayer.pinchStartScale) * logScale
                         
-                        // Update centroid as fingers move
+                        playerPage.currentScale = targetScale
                         gestureLayer.pinchCentroid = centroid.position
-                        
-                        // CRITICAL: Only apply live scale during pinch, NO state changes
                         applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
                         
-                        // Debug
-                        if (Math.random() < 0.1) { // Log 10% of events to avoid spam
-                            console.log("Pinch live (mini): pinchScale=" + scale.toFixed(2) + 
-                                        " delta=" + scaleDelta.toFixed(2) +
-                                        " currentScale=" + playerPage.currentScale.toFixed(2) +
-                                        " size=" + playerPage.width.toFixed(0) + "x" + playerPage.height.toFixed(0))
+                        if (Math.random() < 0.1) {
+                            console.log("Pinch (mini): scale=" + scale.toFixed(0) + 
+                                        " log=" + logScale.toFixed(2) +
+                                        " current=" + playerPage.currentScale.toFixed(2))
                         }
                     }
                 }
