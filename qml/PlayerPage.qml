@@ -313,7 +313,8 @@ Item {
             property point pinchCentroid: Qt.point(0, 0)
             property point dragStartPos
             
-            // Pinch to scale (minimize) - FULLSCREEN
+            // FIXED: Pinch to scale (minimize) - FULLSCREEN
+            // Only manual size/position changes during pinch, state change on release
             PinchHandler {
                 id: pinchHandler
                 target: null
@@ -325,16 +326,18 @@ Item {
                         gestureLayer.pinchStartScale = playerPage.currentScale
                         gestureLayer.pinchCentroid = centroid.position
                         hideControls()
-                        console.log("Pinch started (fullscreen)")
+                        console.log("Pinch started (fullscreen), startScale:", gestureLayer.pinchStartScale)
                     } else {
                         gestureLayer.isPinching = false
-                        console.log("Pinch finished, scale:", playerPage.currentScale)
+                        console.log("Pinch finished, finalScale:", playerPage.currentScale)
                         
-                        // Snap to mini or fullscreen based on threshold
+                        // NOW snap to mini or fullscreen based on threshold
                         if (playerPage.currentScale < 0.5) {
+                            console.log("Scale < 0.5, minimizing")
                             minimizePlayer()
                         } else {
-                            // Snap back to fullscreen
+                            console.log("Scale >= 0.5, staying fullscreen")
+                            // Animate back to fullscreen
                             playerPage.state = "fullscreen"
                         }
                     }
@@ -351,13 +354,21 @@ Item {
                         // Update centroid as fingers move
                         gestureLayer.pinchCentroid = centroid.position
                         
-                        // Scale around finger position
+                        // CRITICAL: Only apply live scale during pinch, NO state changes
                         applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
+                        
+                        // Debug
+                        if (Math.random() < 0.1) { // Log 10% of events to avoid spam
+                            console.log("Pinch live: pinchScale=" + scale.toFixed(2) + 
+                                        " currentScale=" + playerPage.currentScale.toFixed(2) +
+                                        " size=" + playerPage.width.toFixed(0) + "x" + playerPage.height.toFixed(0))
+                        }
                     }
                 }
             }
             
-            // Pinch to zoom - MINI MODE (maximize) - FIXED
+            // FIXED: Pinch to zoom - MINI MODE (maximize)
+            // Only manual size/position changes during pinch, state change on release
             PinchHandler {
                 id: miniPinchHandler
                 target: null
@@ -368,16 +379,18 @@ Item {
                         gestureLayer.isPinching = true
                         gestureLayer.pinchStartScale = playerPage.currentScale
                         gestureLayer.pinchCentroid = centroid.position
-                        console.log("Pinch started (mini), current scale:", playerPage.currentScale)
+                        console.log("Pinch started (mini), startScale:", playerPage.currentScale)
                     } else {
                         gestureLayer.isPinching = false
-                        console.log("Pinch finished (mini), final scale:", playerPage.currentScale)
+                        console.log("Pinch finished (mini), finalScale:", playerPage.currentScale)
                         
-                        // Snap to fullscreen or back to mini
+                        // NOW snap to fullscreen or back to mini
                         if (playerPage.currentScale > 0.5) {
+                            console.log("Scale > 0.5, maximizing")
                             maximizePlayer()
                         } else {
-                            // Snap back to mini
+                            console.log("Scale <= 0.5, staying mini")
+                            // Animate back to mini
                             playerPage.state = "mini"
                         }
                     }
@@ -397,12 +410,16 @@ Item {
                         // Update centroid as fingers move
                         gestureLayer.pinchCentroid = centroid.position
                         
-                        // Scale around finger position
+                        // CRITICAL: Only apply live scale during pinch, NO state changes
                         applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
                         
-                        console.log("Pinch: scale=" + scale.toFixed(2) + 
-                                    " delta=" + scaleDelta.toFixed(2) + 
-                                    " current=" + playerPage.currentScale.toFixed(2))
+                        // Debug
+                        if (Math.random() < 0.1) { // Log 10% of events to avoid spam
+                            console.log("Pinch live (mini): pinchScale=" + scale.toFixed(2) + 
+                                        " delta=" + scaleDelta.toFixed(2) +
+                                        " currentScale=" + playerPage.currentScale.toFixed(2) +
+                                        " size=" + playerPage.width.toFixed(0) + "x" + playerPage.height.toFixed(0))
+                        }
                     }
                 }
             }
@@ -460,7 +477,6 @@ Item {
                     if (active) {
                         // Apply Y translation manually
                         playerContainer.y = Math.min(0, translation.y)
-                        console.log("Swipe Y:", playerContainer.y)
                     }
                 }
             }
@@ -835,10 +851,6 @@ Item {
         to: 0
         duration: 200
         easing.type: Easing.OutCubic
-        
-        onFinished: {
-            console.log("Reset animation finished, Y:", playerContainer.y)
-        }
     }
     
     // Swipe out completely animation
@@ -880,12 +892,13 @@ Item {
     }
     
     function minimizePlayer() {
-        console.log("Minimizing player")
+        console.log("Minimizing player (state transition to mini)")
         hideControls()
         
         // Reset any swipe offset
         playerContainer.y = 0
         
+        // State transition will animate to mini position
         playerPage.state = "mini"
         
         // Notify Main.qml that we minimized (no reload!)
@@ -893,11 +906,12 @@ Item {
     }
     
     function maximizePlayer() {
-        console.log("Maximizing player")
+        console.log("Maximizing player (state transition to fullscreen)")
         
         // Reset any swipe offset
         playerContainer.y = 0
         
+        // State transition will animate to fullscreen
         playerPage.state = "fullscreen"
         showControlsTemporarily()
         
@@ -997,9 +1011,12 @@ Item {
     }
     
     function applyLiveScaleAtCentroid(scale, centroid) {
+        // CRITICAL: This function is called DURING pinching
+        // We manually set size/position WITHOUT triggering state changes
+        
         // Interpolate between mini and fullscreen, centered at finger position
         // scale: 1.0 = fullscreen, 0.0 = mini
-        // centroid: point where fingers are (relative to root)
+        // centroid: point where fingers are (relative to playerPage currently)
         
         var fullWidth = root.width
         var fullHeight = root.height
@@ -1010,41 +1027,29 @@ Item {
         var targetWidth = miniW + (fullWidth - miniW) * scale
         var targetHeight = miniH + (fullHeight - miniH) * scale
         
+        // Convert centroid from playerPage-relative to root-relative
+        // centroid is given relative to the current playerPage position
+        var absoluteCentroidX = playerPage.x + centroid.x
+        var absoluteCentroidY = playerPage.y + centroid.y
+        
         // Calculate position to keep player center at finger centroid
-        // We want: (playerPage.x + targetWidth/2, playerPage.y + targetHeight/2) = centroid
-        var targetX = centroid.x - targetWidth / 2
-        var targetY = centroid.y - targetHeight / 2
+        // We want: (playerPage.x + targetWidth/2, playerPage.y + targetHeight/2) = absoluteCentroid
+        var targetX = absoluteCentroidX - targetWidth / 2
+        var targetY = absoluteCentroidY - targetHeight / 2
         
         // Bounds checking - keep player on screen
         targetX = Math.max(0, Math.min(root.width - targetWidth, targetX))
         targetY = Math.max(0, Math.min(root.height - targetHeight, targetY))
         
-        // Apply to player
+        // Apply to player WITHOUT triggering state changes
         playerPage.width = targetWidth
         playerPage.height = targetHeight
         playerPage.x = targetX
         playerPage.y = targetY
-    }
-
-    function applyLiveScale(scale) {
-        // Interpolate between mini and fullscreen size/position
-        // scale: 1.0 = fullscreen, 0.0 = mini
         
-        var fullWidth = root.width
-        var fullHeight = root.height
-        var fullX = 0
-        var fullY = 0
-        
-        var miniW = miniWidth
-        var miniH = miniHeight
-        var miniX = miniPosition.x
-        var miniY = miniPosition.y
-        
-        // Linear interpolation
-        playerPage.width = miniW + (fullWidth - miniW) * scale
-        playerPage.height = miniH + (fullHeight - miniH) * scale
-        playerPage.x = miniX + (fullX - miniX) * scale
-        playerPage.y = miniY + (fullY - miniY) * scale
+        // Also update container size
+        playerContainer.width = targetWidth
+        playerContainer.height = targetHeight
     }
     
     function switchQuality(qualityName) {
