@@ -234,7 +234,10 @@ Page {
                             anchors.fill: parent
                             onClicked: {
                                 console.log("Category clicked:", model.name, "id:", model.id)
-                                // TODO: Navigate to streams for this category
+                                stackView.push(streamsForCategoryPage, {
+                                    categoryId: model.id,
+                                    categoryName: model.name
+                                })
                             }
                         }
                     }

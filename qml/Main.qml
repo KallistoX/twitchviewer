@@ -49,8 +49,9 @@ MainView {
             stackView.push(categoriesPage)
         }
         
-        // Show drawer in landscape mode by default
-        if (width > height && width > units.gu(100)) {
+        // Show drawer in landscape mode by default (but not in PlayerPage)
+        if (width > height && width > units.gu(100) && 
+            stackView.currentItem && stackView.currentItem.toString().indexOf("PlayerPage") === -1) {
             drawer.open()
         }
     }
@@ -65,13 +66,30 @@ MainView {
         height: root.height
         edge: Qt.LeftEdge
         
-        // Auto-open in landscape mode
+        // Auto-open in landscape mode (but NOT in PlayerPage)
         Connections {
             target: root
             onWidthChanged: {
-                if (root.width > root.height && root.width > units.gu(100)) {
+                // Check if we're in PlayerPage
+                var isPlayerPage = stackView.currentItem && 
+                                   stackView.currentItem.toString().indexOf("PlayerPage") !== -1
+                
+                if (root.width > root.height && root.width > units.gu(100) && !isPlayerPage) {
                     drawer.open()
                 } else if (root.width <= units.gu(70)) {
+                    drawer.close()
+                }
+            }
+        }
+        
+        // Also close drawer when entering PlayerPage
+        Connections {
+            target: stackView
+            onCurrentItemChanged: {
+                var isPlayerPage = stackView.currentItem && 
+                                   stackView.currentItem.toString().indexOf("PlayerPage") !== -1
+                
+                if (isPlayerPage) {
                     drawer.close()
                 }
             }
@@ -359,6 +377,11 @@ MainView {
     Component {
         id: playerPage
         PlayerPage {}
+    }
+    
+    Component {
+        id: streamsForCategoryPage
+        StreamsForCategoryPage {}
     }
     
     // ========================================

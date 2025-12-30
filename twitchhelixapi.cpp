@@ -64,11 +64,40 @@ void TwitchHelixAPI::getStreamsForGame(const QString &gameId, int limit)
     if (limit > 100) limit = 100;
     if (limit < 1) limit = 1;
     
-    QString endpoint = QString("/streams?game_id=%1&first=%2").arg(gameId).arg(limit);
+    QString endpoint = QString("/streams?game_id=%1&first=%2&type=live").arg(gameId).arg(limit);
     QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
+    
+    // Mark as non-pagination request
+    reply->setProperty("withPagination", false);
+    
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onStreamsReceived);
+}
+
+void TwitchHelixAPI::getStreamsForGameWithCursor(const QString &gameId, int limit, const QString &cursor)
+{
+    qDebug() << "Getting streams for game with cursor:" << gameId << "limit:" << limit << "cursor:" << cursor;
+    
+    // Clamp limit
+    if (limit > 100) limit = 100;
+    if (limit < 1) limit = 1;
+    
+    QString endpoint = QString("/streams?game_id=%1&first=%2&type=live").arg(gameId).arg(limit);
+    
+    // Add cursor if provided
+    if (!cursor.isEmpty()) {
+        endpoint += QString("&after=%1").arg(cursor);
+    }
+    
+    QNetworkRequest request = createRequest(endpoint, m_authToken);
+    
+    QNetworkReply *reply = m_networkManager->get(request);
+    
+    // Mark as pagination request
+    reply->setProperty("withPagination", true);
+    
+    connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onStreamsWithPaginationReceived);
 }
 
 void TwitchHelixAPI::getStreamForUser(const QString &userLogin)
@@ -79,6 +108,10 @@ void TwitchHelixAPI::getStreamForUser(const QString &userLogin)
     QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
+    
+    // Mark as non-pagination request
+    reply->setProperty("withPagination", false);
+    
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onStreamsReceived);
 }
 
@@ -189,6 +222,42 @@ void TwitchHelixAPI::onStreamsReceived()
     } else {
         emit streamsReceived(streams);
     }
+}
+
+void TwitchHelixAPI::onStreamsWithPaginationReceived()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    
+    reply->deleteLater();
+    
+    if (reply->error() != QNetworkReply::NoError) {
+        handleNetworkError(reply);
+        return;
+    }
+    
+    QByteArray responseData = reply->readAll();
+    QJsonDocument doc = QJsonDocument::fromJson(responseData);
+    
+    if (doc.isNull() || !doc.isObject()) {
+        emit error("Invalid JSON response");
+        return;
+    }
+    
+    QJsonObject obj = doc.object();
+    QJsonArray streams = obj["data"].toArray();
+    
+    // Extract pagination cursor
+    QString cursor = "";
+    if (obj.contains("pagination")) {
+        QJsonObject pagination = obj["pagination"].toObject();
+        cursor = pagination["cursor"].toString();
+    }
+    
+    qDebug() << "Received" << streams.size() << "streams with pagination";
+    qDebug() << "Next cursor:" << (cursor.isEmpty() ? "NONE (last page)" : cursor);
+    
+    emit streamsPaginationReceived(streams, cursor);
 }
 
 void TwitchHelixAPI::onFollowedStreamsReceived()

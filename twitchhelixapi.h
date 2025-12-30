@@ -30,7 +30,7 @@
  * 
  * Handles all Twitch Helix API v2 endpoints:
  * - Get Top Games/Categories
- * - Get Streams
+ * - Get Streams (with pagination support)
  * - Get User Info
  * - Get Followed Streams (requires OAuth)
  * 
@@ -63,6 +63,15 @@ public:
      * @param limit Number of results (max 100, default 20)
      */
     Q_INVOKABLE void getStreamsForGame(const QString &gameId, int limit = 20);
+    
+    /**
+     * Get Live Streams for a specific game/category with pagination
+     * 
+     * @param gameId Twitch Game ID
+     * @param limit Number of results (max 100, default 20)
+     * @param cursor Pagination cursor (empty for first page)
+     */
+    Q_INVOKABLE void getStreamsForGameWithCursor(const QString &gameId, int limit, const QString &cursor);
     
     /**
      * Get Stream info for a specific channel
@@ -106,8 +115,11 @@ signals:
     // Top Games response
     void topGamesReceived(const QJsonArray &games);
     
-    // Streams response
+    // Streams response (without pagination info)
     void streamsReceived(const QJsonArray &streams);
+    
+    // Streams response WITH pagination info
+    void streamsPaginationReceived(const QJsonArray &streams, const QString &cursor);
     
     // Single stream response
     void streamReceived(const QJsonObject &stream);
@@ -128,6 +140,7 @@ signals:
 private slots:
     void onTopGamesReceived();
     void onStreamsReceived();
+    void onStreamsWithPaginationReceived();
     void onFollowedStreamsReceived();
     void onUserInfoReceived();
     void onAuthValidationReceived();
