@@ -24,6 +24,9 @@ Page {
     
     property bool isRefreshing: false
     
+    // Signal to request stream playback
+    signal streamRequested(string channel, string quality)
+    
     header: PageHeader {
         id: pageHeader
         title: i18n.tr('Followed Channels')
@@ -51,27 +54,29 @@ Page {
         id: followedModel
     }
     
-    // Pull to refresh
-    PullToRefresh {
-        id: pullToRefresh
+    // Pull to refresh with proper Flickable structure
+    Flickable {
+        id: mainFlickable
         anchors {
             top: pageHeader.bottom
             left: parent.left
             right: parent.right
             bottom: parent.bottom
         }
-        refreshing: isRefreshing
+        contentHeight: followedContent.height
+        clip: true
         
-        onRefresh: refreshFollowed()
+        // Pull to refresh
+        PullToRefresh {
+            id: pullToRefresh
+            refreshing: isRefreshing
+            onRefresh: refreshFollowed()
+        }
         
-        Flickable {
-            anchors.fill: parent
-            contentHeight: followedContent.height
-            
-            Column {
-                id: followedContent
-                width: parent.width
-                spacing: units.gu(2)
+        Column {
+            id: followedContent
+            width: parent.width
+            spacing: units.gu(2)
                 
                 // Loading indicator
                 ActivityIndicator {
@@ -235,7 +240,6 @@ Page {
                 }
             }
         }
-    }
     
     // Functions
     function refreshFollowed() {
@@ -255,10 +259,8 @@ Page {
     }
     
     function watchStream(channelName) {
-        stackView.push(playerPage, {
-            channelName: channelName,
-            requestedQuality: "best"
-        })
+        console.log("Requesting stream:", channelName)
+        streamRequested(channelName, "best")
     }
     
     // Load followed streams on component completion

@@ -24,6 +24,9 @@ Page {
     
     property bool isRefreshing: false
     
+    // Signal to request stream playback
+    signal streamRequested(string channel, string quality)
+    
     header: PageHeader {
         id: pageHeader
         title: i18n.tr('Browse')
@@ -263,11 +266,8 @@ Page {
     }
     
     function watchStream(channelName) {
-        console.log("Starting stream:", channelName)
-        stackView.push(playerPage, {
-            channelName: channelName,
-            requestedQuality: "best"
-        })
+        console.log("Requesting stream:", channelName)
+        streamRequested(channelName, "best")
     }
     
     // Load categories on component completion

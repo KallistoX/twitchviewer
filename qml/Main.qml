@@ -29,12 +29,6 @@ MainView {
     width: units.gu(45)
     height: units.gu(75)
     
-    // Mini player state
-    property bool miniPlayerActive: false
-    property string miniPlayerChannel: ""
-    property string miniPlayerStreamUrl: ""
-    property var miniPlayerComponent: null
-    
     // Background color from theme
     backgroundColor: ThemeManager.backgroundColor
     
@@ -60,9 +54,8 @@ MainView {
             stackView.push(categoriesPage)
         }
         
-        // Show drawer in landscape mode by default (but not in PlayerPage)
-        if (width > height && width > units.gu(100) && 
-            stackView.currentItem && stackView.currentItem.toString().indexOf("PlayerPage") === -1) {
+        // Show drawer in landscape mode by default
+        if (width > height && width > units.gu(100)) {
             drawer.open()
         }
     }
@@ -77,15 +70,11 @@ MainView {
         height: root.height
         edge: Qt.LeftEdge
         
-        // Auto-open in landscape mode (but NOT in PlayerPage)
+        // Auto-open in landscape mode (except when player is fullscreen)
         Connections {
             target: root
             onWidthChanged: {
-                // Check if we're in PlayerPage
-                var isPlayerPage = stackView.currentItem && 
-                                   stackView.currentItem.toString().indexOf("PlayerPage") !== -1
-                
-                if (root.width > root.height && root.width > units.gu(100) && !isPlayerPage) {
+                if (root.width > root.height && root.width > units.gu(100) && !player.isActive) {
                     drawer.open()
                 } else if (root.width <= units.gu(70)) {
                     drawer.close()
@@ -93,16 +82,11 @@ MainView {
             }
         }
         
-        // Also close drawer when entering PlayerPage
+        // Close drawer when player goes fullscreen
         Connections {
-            target: stackView
-            onCurrentItemChanged: {
-                var isPlayerPage = stackView.currentItem && 
-                                   stackView.currentItem.toString().indexOf("PlayerPage") !== -1
-                
-                if (isPlayerPage) {
-                    drawer.close()
-                }
+            target: player
+            onPlayerMaximized: {
+                drawer.close()
             }
         }
         
@@ -429,41 +413,55 @@ MainView {
         id: stackView
         anchors.fill: parent
         
+        // Dim when player is active
+        opacity: player.isActive && player.state === "fullscreen" ? 0 : 1
+        
+        Behavior on opacity {
+            NumberAnimation { duration: 300 }
+        }
+        
         // No initial item - we push it in onCompleted based on auth state
     }
     
     // ========================================
-    // MINI PLAYER OVERLAY
+    // STREAM REQUEST HANDLER
     // ========================================
     
-    Loader {
-        id: miniPlayerLoader
-        active: miniPlayerActive
+    Connections {
+        target: stackView.currentItem
+        ignoreUnknownSignals: true
         
-        sourceComponent: Component {
-            PlayerPage {
-                id: miniPlayerInstance
-                
-                channelName: miniPlayerChannel
-                currentStreamUrl: miniPlayerStreamUrl
-                isMiniMode: true
-                state: "mini"
-                
-                // Position in bottom right corner by default
-                Component.onCompleted: {
-                    console.log("Mini player instance created")
-                }
-                
-                onMiniPlayerClosed: {
-                    console.log("Mini player closed signal received")
-                    miniPlayerActive = false
-                    miniPlayerChannel = ""
-                    miniPlayerStreamUrl = ""
-                }
-            }
+        onStreamRequested: {
+            console.log("Stream requested from page:", channel, quality)
+            player.startStream(channel, quality)
+        }
+    }
+    
+    // ========================================
+    // PERSISTENT PLAYER (Top-Level, Always Exists)
+    // ========================================
+    
+    PlayerPage {
+        id: player
+        // NO anchors.fill! PlayerPage manages its own size/position
+        
+        // Start hidden
+        isActive: false
+        
+        onPlayerMinimized: {
+            console.log("Player minimized, showing StackView")
+            // StackView becomes visible again (opacity animation)
         }
         
-        z: 998 // Below any popups but above stack view
+        onPlayerMaximized: {
+            console.log("Player maximized, hiding StackView")
+            drawer.close()
+        }
+        
+        onPlayerClosed: {
+            console.log("Player closed, showing StackView")
+            // StackView becomes visible again (opacity animation)
+        }
     }
     
     // ========================================
@@ -483,23 +481,6 @@ MainView {
     Component {
         id: settingsPage
         SettingsPage {}
-    }
-    
-    Component {
-        id: playerPage
-        PlayerPage {
-            onMiniPlayerRequested: {
-                console.log("Mini player requested:", channel)
-                
-                // Store mini player state
-                miniPlayerChannel = channel
-                miniPlayerStreamUrl = streamUrl
-                miniPlayerActive = true
-                
-                // Remove PlayerPage from stack
-                stackView.pop()
-            }
-        }
     }
     
     Component {

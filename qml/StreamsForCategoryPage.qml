@@ -31,6 +31,9 @@ Page {
     property string paginationCursor: ""
     property bool hasMorePages: false
     
+    // Signal to request stream playback
+    signal streamRequested(string channel, string quality)
+    
     header: PageHeader {
         id: pageHeader
         title: categoryName
@@ -58,27 +61,29 @@ Page {
         id: streamsModel
     }
     
-    // Pull to refresh
-    PullToRefresh {
-        id: pullToRefresh
+    // Pull to refresh with proper Flickable structure
+    Flickable {
+        id: mainFlickable
         anchors {
             top: pageHeader.bottom
             left: parent.left
             right: parent.right
             bottom: parent.bottom
         }
-        refreshing: isRefreshing
+        contentHeight: streamsContent.height
+        clip: true
         
-        onRefresh: refreshStreams()
+        // Pull to refresh
+        PullToRefresh {
+            id: pullToRefresh
+            refreshing: isRefreshing
+            onRefresh: refreshStreams()
+        }
         
-        Flickable {
-            anchors.fill: parent
-            contentHeight: streamsContent.height
-            
-            Column {
-                id: streamsContent
-                width: parent.width
-                spacing: units.gu(2)
+        Column {
+            id: streamsContent
+            width: parent.width
+            spacing: units.gu(2)
                 
                 // Loading indicator
                 ActivityIndicator {
@@ -248,7 +253,6 @@ Page {
                 }
             }
         }
-    }
     
     // Functions
     function refreshStreams() {
@@ -264,17 +268,12 @@ Page {
         console.log("Loading more streams, cursor:", paginationCursor)
         isLoadingMore = true
         
-        // Use helixApi with pagination cursor
-        // Note: We need to add a method that supports pagination
-        // For now, we'll just load the next page manually
         helixApi.getStreamsForGameWithCursor(categoryId, 20, paginationCursor)
     }
     
     function watchStream(channelName) {
-        stackView.push(playerPage, {
-            channelName: channelName,
-            requestedQuality: "best"
-        })
+        console.log("Requesting stream:", channelName)
+        streamRequested(channelName, "best")
     }
     
     // Load streams on component completion
