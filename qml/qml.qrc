@@ -6,5 +6,7 @@
         <file>PlayerPage.qml</file>
         <file>SettingsPage.qml</file>
         <file>StreamsForCategoryPage.qml</file>
+        <file>ThemeManager.qml</file>
+        <file>qmldir</file>
     </qresource>
 </RCC>

@@ -14,10 +14,11 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import QtQuick 2.7
+import QtQuick 2.15
 import QtQuick.Controls 2.2
 import Lomiri.Components 1.3
 import QtQuick.Layouts 1.3
+import QtGraphicalEffects 1.15
 
 MainView {
     id: root
@@ -28,11 +29,21 @@ MainView {
     width: units.gu(45)
     height: units.gu(75)
     
+    // Mini player state
+    property bool miniPlayerActive: false
+    property string miniPlayerChannel: ""
+    property string miniPlayerStreamUrl: ""
+    property var miniPlayerComponent: null
+    
+    // Background color from theme
+    backgroundColor: ThemeManager.backgroundColor
+    
     Component.onCompleted: {
         console.log("MainView loaded")
         console.log("twitchFetcher exists:", typeof twitchFetcher !== 'undefined')
         console.log("authManager exists:", typeof authManager !== 'undefined')
         console.log("helixApi exists:", typeof helixApi !== 'undefined')
+        console.log("Dark Mode:", ThemeManager.isDarkMode)
         
         // Fetch user info if GraphQL token exists
         if (typeof twitchFetcher !== 'undefined' && twitchFetcher.hasGraphQLToken) {
@@ -97,7 +108,7 @@ MainView {
         
         Rectangle {
             anchors.fill: parent
-            color: theme.palette.normal.background
+            color: ThemeManager.surfaceColor
             
             Flickable {
                 anchors.fill: parent
@@ -110,13 +121,66 @@ MainView {
                     spacing: 0
                     
                     // ========================================
+                    // DARK MODE TOGGLE
+                    // ========================================
+                    
+                    Rectangle {
+                        width: parent.width
+                        height: units.gu(6)
+                        color: ThemeManager.cardColor
+                        
+                        Row {
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                margins: units.gu(2)
+                                verticalCenter: parent.verticalCenter
+                            }
+                            spacing: units.gu(1)
+                            
+                            Icon {
+                                name: ThemeManager.isDarkMode ? "torch-on" : "torch-off"
+                                width: units.gu(3)
+                                height: units.gu(3)
+                                color: ThemeManager.textPrimary
+                            }
+                            
+                            Label {
+                                text: i18n.tr("Dark Mode")
+                                color: ThemeManager.textPrimary
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            
+                            Item { Layout.fillWidth: true; width: units.gu(1) }
+                            
+                            Switch {
+                                id: darkModeSwitch
+                                checked: ThemeManager.isDarkMode
+                                anchors.verticalCenter: parent.verticalCenter
+                                
+                                onCheckedChanged: {
+                                    if (checked !== ThemeManager.isDarkMode) {
+                                        ThemeManager.toggleDarkMode()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    Rectangle {
+                        width: parent.width
+                        height: units.dp(1)
+                        color: ThemeManager.dividerColor
+                    }
+                    
+                    // ========================================
                     // USER INFO HEADER (if logged in)
                     // ========================================
                     
                     Rectangle {
                         width: parent.width
                         height: userInfoContent.height + units.gu(2)
-                        color: theme.palette.normal.base
+                        color: ThemeManager.cardColor
                         visible: authManager.isAuthenticated && twitchFetcher.hasUserInfo
                         
                         Column {
@@ -134,7 +198,7 @@ MainView {
                                 width: units.gu(8)
                                 height: units.gu(8)
                                 radius: width / 2
-                                color: theme.palette.normal.foreground
+                                color: ThemeManager.borderColor
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 clip: true
                                 
@@ -152,6 +216,7 @@ MainView {
                                     width: units.gu(5)
                                     height: units.gu(5)
                                     visible: twitchFetcher.currentUserProfileImage == ""
+                                    color: ThemeManager.textSecondary
                                 }
                             }
                             
@@ -161,13 +226,14 @@ MainView {
                                 font.bold: true
                                 fontSize: "medium"
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                color: ThemeManager.textPrimary
                             }
                             
                             // Login name
                             Label {
                                 text: "@" + twitchFetcher.currentUserLogin
                                 fontSize: "small"
-                                color: theme.palette.normal.backgroundSecondaryText
+                                color: ThemeManager.textSecondary
                                 anchors.horizontalCenter: parent.horizontalCenter
                             }
                             
@@ -180,14 +246,14 @@ MainView {
                                     width: adFreeLabel.width + units.gu(1)
                                     height: adFreeLabel.height + units.gu(0.5)
                                     radius: units.gu(0.5)
-                                    color: twitchFetcher.hasGraphQLToken ? theme.palette.normal.positive : theme.palette.normal.base
+                                    color: twitchFetcher.hasGraphQLToken ? ThemeManager.positiveColor : ThemeManager.cardColor
                                     
                                     Label {
                                         id: adFreeLabel
                                         anchors.centerIn: parent
                                         text: "Ad-Free"
                                         fontSize: "x-small"
-                                        color: twitchFetcher.hasGraphQLToken ? "white" : theme.palette.normal.backgroundSecondaryText
+                                        color: twitchFetcher.hasGraphQLToken ? "white" : ThemeManager.textSecondary
                                     }
                                 }
                                 
@@ -195,14 +261,14 @@ MainView {
                                     width: oauthLabel.width + units.gu(1)
                                     height: oauthLabel.height + units.gu(0.5)
                                     radius: units.gu(0.5)
-                                    color: authManager.isAuthenticated ? theme.palette.normal.positive : theme.palette.normal.base
+                                    color: authManager.isAuthenticated ? ThemeManager.positiveColor : ThemeManager.cardColor
                                     
                                     Label {
                                         id: oauthLabel
                                         anchors.centerIn: parent
                                         text: "OAuth"
                                         fontSize: "x-small"
-                                        color: authManager.isAuthenticated ? "white" : theme.palette.normal.backgroundSecondaryText
+                                        color: authManager.isAuthenticated ? "white" : ThemeManager.textSecondary
                                     }
                                 }
                             }
@@ -216,7 +282,7 @@ MainView {
                     Rectangle {
                         width: parent.width
                         height: loginPrompt.height + units.gu(4)
-                        color: theme.palette.normal.base
+                        color: ThemeManager.cardColor
                         visible: !authManager.isAuthenticated
                         
                         Column {
@@ -234,18 +300,20 @@ MainView {
                                 width: units.gu(6)
                                 height: units.gu(6)
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                color: ThemeManager.textSecondary
                             }
                             
                             Label {
                                 text: i18n.tr("Not logged in")
                                 font.bold: true
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                color: ThemeManager.textPrimary
                             }
                             
                             Button {
                                 text: i18n.tr("Login to access followed streams")
                                 width: parent.width
-                                color: theme.palette.normal.positive
+                                color: ThemeManager.accentColor
                                 onClicked: {
                                     drawer.close()
                                     stackView.push(settingsPage)
@@ -257,7 +325,7 @@ MainView {
                     Rectangle {
                         width: parent.width
                         height: units.dp(1)
-                        color: theme.palette.normal.base
+                        color: ThemeManager.dividerColor
                     }
                     
                     // ========================================
@@ -268,14 +336,17 @@ MainView {
                     ListItem {
                         visible: authManager.isAuthenticated
                         height: units.gu(6)
+                        color: ThemeManager.surfaceColor
                         
                         ListItemLayout {
                             title.text: i18n.tr("Followed Channels")
+                            title.color: ThemeManager.textPrimary
                             
                             Icon {
                                 name: "stock_video"
                                 width: units.gu(3)
                                 height: units.gu(3)
+                                color: ThemeManager.textPrimary
                                 SlotsLayout.position: SlotsLayout.Leading
                             }
                         }
@@ -293,14 +364,17 @@ MainView {
                     // Browse Categories
                     ListItem {
                         height: units.gu(6)
+                        color: ThemeManager.surfaceColor
                         
                         ListItemLayout {
                             title.text: i18n.tr("Browse Categories")
+                            title.color: ThemeManager.textPrimary
                             
                             Icon {
                                 name: "view-grid-symbolic"
                                 width: units.gu(3)
                                 height: units.gu(3)
+                                color: ThemeManager.textPrimary
                                 SlotsLayout.position: SlotsLayout.Leading
                             }
                         }
@@ -318,14 +392,17 @@ MainView {
                     // Settings
                     ListItem {
                         height: units.gu(6)
+                        color: ThemeManager.surfaceColor
                         
                         ListItemLayout {
                             title.text: i18n.tr("Settings")
+                            title.color: ThemeManager.textPrimary
                             
                             Icon {
                                 name: "settings"
                                 width: units.gu(3)
                                 height: units.gu(3)
+                                color: ThemeManager.textPrimary
                                 SlotsLayout.position: SlotsLayout.Leading
                             }
                         }
@@ -356,6 +433,40 @@ MainView {
     }
     
     // ========================================
+    // MINI PLAYER OVERLAY
+    // ========================================
+    
+    Loader {
+        id: miniPlayerLoader
+        active: miniPlayerActive
+        
+        sourceComponent: Component {
+            PlayerPage {
+                id: miniPlayerInstance
+                
+                channelName: miniPlayerChannel
+                currentStreamUrl: miniPlayerStreamUrl
+                isMiniMode: true
+                state: "mini"
+                
+                // Position in bottom right corner by default
+                Component.onCompleted: {
+                    console.log("Mini player instance created")
+                }
+                
+                onMiniPlayerClosed: {
+                    console.log("Mini player closed signal received")
+                    miniPlayerActive = false
+                    miniPlayerChannel = ""
+                    miniPlayerStreamUrl = ""
+                }
+            }
+        }
+        
+        z: 998 // Below any popups but above stack view
+    }
+    
+    // ========================================
     // PAGE COMPONENTS
     // ========================================
     
@@ -376,7 +487,19 @@ MainView {
     
     Component {
         id: playerPage
-        PlayerPage {}
+        PlayerPage {
+            onMiniPlayerRequested: {
+                console.log("Mini player requested:", channel)
+                
+                // Store mini player state
+                miniPlayerChannel = channel
+                miniPlayerStreamUrl = streamUrl
+                miniPlayerActive = true
+                
+                // Remove PlayerPage from stack
+                stackView.pop()
+            }
+        }
     }
     
     Component {
