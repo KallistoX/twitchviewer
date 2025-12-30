@@ -310,6 +310,7 @@ Item {
             property bool isDragging: false
             property real pinchStartScale: 1.0
             property real swipeStartY: 0
+            property point pinchCentroid: Qt.point(0, 0)
             property point dragStartPos
             
             // Pinch to scale (minimize) - FULLSCREEN
@@ -322,6 +323,7 @@ Item {
                     if (active) {
                         gestureLayer.isPinching = true
                         gestureLayer.pinchStartScale = playerPage.currentScale
+                        gestureLayer.pinchCentroid = centroid.position
                         hideControls()
                         console.log("Pinch started (fullscreen)")
                     } else {
@@ -346,8 +348,11 @@ Item {
                         // Clamp between 0 (mini) and 1 (full)
                         playerPage.currentScale = Math.max(0, Math.min(1, newScale))
                         
-                        // Apply live scaling
-                        applyLiveScale(playerPage.currentScale)
+                        // Update centroid as fingers move
+                        gestureLayer.pinchCentroid = centroid.position
+                        
+                        // Scale around finger position
+                        applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
                     }
                 }
             }
@@ -362,6 +367,7 @@ Item {
                     if (active) {
                         gestureLayer.isPinching = true
                         gestureLayer.pinchStartScale = playerPage.currentScale
+                        gestureLayer.pinchCentroid = centroid.position
                         console.log("Pinch started (mini), current scale:", playerPage.currentScale)
                     } else {
                         gestureLayer.isPinching = false
@@ -388,8 +394,11 @@ Item {
                         // Clamp between 0 (mini) and 1 (full)
                         playerPage.currentScale = Math.max(0, Math.min(1, newScale))
                         
-                        // Apply live scaling
-                        applyLiveScale(playerPage.currentScale)
+                        // Update centroid as fingers move
+                        gestureLayer.pinchCentroid = centroid.position
+                        
+                        // Scale around finger position
+                        applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
                         
                         console.log("Pinch: scale=" + scale.toFixed(2) + 
                                     " delta=" + scaleDelta.toFixed(2) + 
@@ -987,6 +996,36 @@ Item {
         }
     }
     
+    function applyLiveScaleAtCentroid(scale, centroid) {
+        // Interpolate between mini and fullscreen, centered at finger position
+        // scale: 1.0 = fullscreen, 0.0 = mini
+        // centroid: point where fingers are (relative to root)
+        
+        var fullWidth = root.width
+        var fullHeight = root.height
+        var miniW = miniWidth
+        var miniH = miniHeight
+        
+        // Interpolate dimensions
+        var targetWidth = miniW + (fullWidth - miniW) * scale
+        var targetHeight = miniH + (fullHeight - miniH) * scale
+        
+        // Calculate position to keep player center at finger centroid
+        // We want: (playerPage.x + targetWidth/2, playerPage.y + targetHeight/2) = centroid
+        var targetX = centroid.x - targetWidth / 2
+        var targetY = centroid.y - targetHeight / 2
+        
+        // Bounds checking - keep player on screen
+        targetX = Math.max(0, Math.min(root.width - targetWidth, targetX))
+        targetY = Math.max(0, Math.min(root.height - targetHeight, targetY))
+        
+        // Apply to player
+        playerPage.width = targetWidth
+        playerPage.height = targetHeight
+        playerPage.x = targetX
+        playerPage.y = targetY
+    }
+
     function applyLiveScale(scale) {
         // Interpolate between mini and fullscreen size/position
         // scale: 1.0 = fullscreen, 0.0 = mini

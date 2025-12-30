@@ -415,6 +415,9 @@ MainView {
         
         // Dim when player is active
         opacity: player.isActive && player.state === "fullscreen" ? 0 : 1
+
+        // FIX: Disable interaction when player is fullscreen
+        enabled: !(player.isActive && player.state === "fullscreen")
         
         Behavior on opacity {
             NumberAnimation { duration: 300 }
