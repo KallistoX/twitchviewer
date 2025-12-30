@@ -352,7 +352,7 @@ Item {
                 }
             }
             
-            // Pinch to zoom - MINI MODE (maximize)
+            // Pinch to zoom - MINI MODE (maximize) - FIXED
             PinchHandler {
                 id: miniPinchHandler
                 target: null
@@ -362,10 +362,10 @@ Item {
                     if (active) {
                         gestureLayer.isPinching = true
                         gestureLayer.pinchStartScale = playerPage.currentScale
-                        console.log("Pinch started (mini)")
+                        console.log("Pinch started (mini), current scale:", playerPage.currentScale)
                     } else {
                         gestureLayer.isPinching = false
-                        console.log("Pinch finished (mini), scale:", playerPage.currentScale)
+                        console.log("Pinch finished (mini), final scale:", playerPage.currentScale)
                         
                         // Snap to fullscreen or back to mini
                         if (playerPage.currentScale > 0.5) {
@@ -379,14 +379,21 @@ Item {
                 
                 onScaleChanged: {
                     if (active) {
+                        // Scale starts at 1.0 when pinch begins
                         // Pinch OUT (scale > 1) = maximize
-                        var newScale = gestureLayer.pinchStartScale * scale
+                        // Calculate delta from initial scale (1.0)
+                        var scaleDelta = scale - 1.0
+                        var newScale = gestureLayer.pinchStartScale + scaleDelta
                         
                         // Clamp between 0 (mini) and 1 (full)
                         playerPage.currentScale = Math.max(0, Math.min(1, newScale))
                         
                         // Apply live scaling
                         applyLiveScale(playerPage.currentScale)
+                        
+                        console.log("Pinch: scale=" + scale.toFixed(2) + 
+                                    " delta=" + scaleDelta.toFixed(2) + 
+                                    " current=" + playerPage.currentScale.toFixed(2))
                     }
                 }
             }
