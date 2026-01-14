@@ -3,6 +3,7 @@
     "description": "A small App to view Twitch Streams",
     "architecture": "@CLICK_ARCH@",
     "title": "TwitchViewer",
+    "icon": "assets/logo.svg",
     "hooks": {
         "twitchviewer": {
             "apparmor": "twitchviewer.apparmor",

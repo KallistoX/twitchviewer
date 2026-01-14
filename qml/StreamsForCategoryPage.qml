@@ -18,6 +18,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.2
 import Lomiri.Components 1.3
 import QtQuick.Layouts 1.3
+import "components"
 
 Page {
     id: streamsForCategoryPage
@@ -72,23 +73,25 @@ Page {
         }
         contentHeight: streamsContent.height
         clip: true
-        
-        // Pull to refresh
-        PullToRefresh {
+
+        // Custom Pull to refresh
+        CustomPullToRefresh {
             id: pullToRefresh
+            target: mainFlickable
             refreshing: isRefreshing
             onRefresh: refreshStreams()
         }
-        
+
         Column {
             id: streamsContent
             width: parent.width
             spacing: units.gu(2)
-                
-                // Loading indicator
+            topPadding: pullToRefresh.height
+
+                // Loading indicator (only show when refreshing but pull indicator is not visible)
                 ActivityIndicator {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    running: isRefreshing
+                    running: isRefreshing && pullToRefresh.height === 0
                     visible: running
                 }
                 

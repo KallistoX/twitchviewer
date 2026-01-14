@@ -8,5 +8,6 @@
         <file>StreamsForCategoryPage.qml</file>
         <file>ThemeManager.qml</file>
         <file>qmldir</file>
+        <file>components/CustomPullToRefresh.qml</file>
     </qresource>
 </RCC>
