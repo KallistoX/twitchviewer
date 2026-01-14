@@ -26,9 +26,17 @@ Page {
 
     property bool isRefreshing: false
 
+    // Force the page to match StackView width
+    width: StackView.view ? StackView.view.width : parent.width
+    height: StackView.view ? StackView.view.height : parent.height
+
+    onWidthChanged: {
+        console.log("FollowedPage width changed:", width)
+    }
+
     // Signal to request stream playback
     signal streamRequested(string channel, string quality)
-    
+
     header: PageHeader {
         id: pageHeader
         title: i18n.tr('Followed Channels')
@@ -37,7 +45,7 @@ Page {
             Action {
                 iconName: "navigation-menu"
                 text: i18n.tr("Menu")
-                onTriggered: drawer.open()
+                onTriggered: root.toggleSidebar()
             }
         ]
         
@@ -78,7 +86,10 @@ Page {
 
         Column {
             id: followedContent
-            width: parent.width
+            anchors {
+                left: parent.left
+                right: parent.right
+            }
             spacing: units.gu(2)
             topPadding: pullToRefresh.height
 
@@ -264,6 +275,8 @@ Page {
     
     // Load followed streams on component completion
     Component.onCompleted: {
+        console.log("FollowedPage created | width:", width)
+
         if (authManager.isAuthenticated && twitchFetcher.hasUserInfo) {
             refreshFollowed()
         }

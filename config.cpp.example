@@ -33,13 +33,16 @@
  * 3. Copy your Client ID and paste it below:
  */
 
+// Your App Client ID (for OAuth - optional)
 const QString Config::TWITCH_CLIENT_ID = "REPLACE_WITH_YOUR_CLIENT_ID";
 
+// Twitch's public Client ID (for API - DO NOT CHANGE!)
+const QString Config::TWITCH_PUBLIC_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko";
+
 /**
- * IMPORTANT: 
+ * IMPORTANT:
  * - Never commit config.cpp to Git (it's in .gitignore)
  * - Only commit config.cpp.example
- * - For development, you can temporarily use the public client ID:
- *   "kimne78kx3ncx6brgo4mv6wki5h1ko"
- *   (but this won't support OAuth login)
+ * - For development, you can use the public client ID above
+ *   (but this won't support OAuth login unless user provides token)
  */

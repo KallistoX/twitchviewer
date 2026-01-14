@@ -25,9 +25,17 @@ Page {
 
     property bool isRefreshing: false
 
+    // Force the page to match StackView width
+    width: StackView.view ? StackView.view.width : parent.width
+    height: StackView.view ? StackView.view.height : parent.height
+
+    onWidthChanged: {
+        console.log("CategoriesPage width changed:", width)
+    }
+
     // Signal to request stream playback
     signal streamRequested(string channel, string quality)
-    
+
     header: PageHeader {
         id: pageHeader
         title: i18n.tr('Browse')
@@ -36,7 +44,7 @@ Page {
             Action {
                 iconName: "navigation-menu"
                 text: i18n.tr("Menu")
-                onTriggered: drawer.open()
+                onTriggered: root.toggleSidebar()
             }
         ]
         
@@ -64,10 +72,13 @@ Page {
         }
         contentHeight: contentColumn.height
         clip: true
-        
+
         Column {
             id: contentColumn
-            width: parent.width
+            anchors {
+                left: parent.left
+                right: parent.right
+            }
             spacing: units.gu(2)
             padding: units.gu(2)
             
@@ -268,6 +279,7 @@ Page {
     
     // Load categories on component completion
     Component.onCompleted: {
+        console.log("CategoriesPage created | width:", width)
         refreshCategories()
     }
     

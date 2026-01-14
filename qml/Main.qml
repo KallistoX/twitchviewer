@@ -33,7 +33,6 @@ MainView {
     backgroundColor: ThemeManager.backgroundColor
 
     Component.onCompleted: {
-
         // Fetch user info if GraphQL token exists
         if (typeof twitchFetcher !== 'undefined' && twitchFetcher.hasGraphQLToken) {
             twitchFetcher.fetchCurrentUser()
@@ -46,9 +45,24 @@ MainView {
             stackView.push(categoriesPage)
         }
 
-        // Show drawer in landscape mode by default
-        if (width > height && width > units.gu(100)) {
+        // Open sidebar/drawer in wide mode by default
+        if (!useOverlayMode && !player.isActive) {
+            sidebarOpen = true
+        } else if (useOverlayMode && width > units.gu(100)) {
             drawer.open()
+        }
+    }
+
+    // Function to toggle sidebar/drawer (can be called from hamburger button)
+    function toggleSidebar() {
+        if (useOverlayMode) {
+            if (drawer.position > 0) {
+                drawer.close()
+            } else {
+                drawer.open()
+            }
+        } else {
+            sidebarOpen = !sidebarOpen
         }
     }
 
@@ -150,45 +164,51 @@ MainView {
     }
 
     // ========================================
-    // DRAWER (Sidebar Navigation)
+    // RESPONSIVE SIDEBAR/DRAWER
     // ========================================
-    
+
+    // Determine mode based on screen width
+    property bool useOverlayMode: root.width <= units.gu(70)
+    property bool sidebarOpen: false
+
+    // Handle width changes
+    Connections {
+        target: root
+        onWidthChanged: {
+            if (!useOverlayMode && !player.isActive) {
+                sidebarOpen = true
+            } else if (useOverlayMode) {
+                sidebarOpen = false
+            }
+        }
+    }
+
+    // Close sidebar when player goes fullscreen
+    Connections {
+        target: player
+        onPlayerMaximized: {
+            sidebarOpen = false
+        }
+    }
+
+    // OVERLAY MODE: Traditional Drawer (Smartphone)
     Drawer {
         id: drawer
+        visible: useOverlayMode
         y: offlineBanner.visible ? offlineBanner.height : 0
         width: units.gu(30)
         height: root.height
         edge: Qt.LeftEdge
-        
-        // Auto-open in landscape mode (except when player is fullscreen)
-        Connections {
-            target: root
-            onWidthChanged: {
-                if (root.width > root.height && root.width > units.gu(100) && !player.isActive) {
-                    drawer.open()
-                } else if (root.width <= units.gu(70)) {
-                    drawer.close()
-                }
-            }
-        }
-        
-        // Close drawer when player goes fullscreen
-        Connections {
-            target: player
-            onPlayerMaximized: {
-                drawer.close()
-            }
-        }
-        
+
         Rectangle {
             anchors.fill: parent
             color: ThemeManager.surfaceColor
-            
+
             Flickable {
                 anchors.fill: parent
                 contentHeight: drawerContent.height
                 clip: true
-                
+
                 Column {
                     id: drawerContent
                     width: parent.width
@@ -424,25 +444,25 @@ MainView {
                                 SlotsLayout.position: SlotsLayout.Leading
                             }
                         }
-                        
+
                         onClicked: {
-                                        stackView.clear()
+                            stackView.clear()
                             stackView.push(followedPage)
-                            if (root.width <= units.gu(70)) {
+                            if (useOverlayMode) {
                                 drawer.close()
                             }
                         }
                     }
-                    
+
                     // Browse Categories
                     ListItem {
                         height: units.gu(6)
                         color: ThemeManager.surfaceColor
-                        
+
                         ListItemLayout {
                             title.text: i18n.tr("Browse Categories")
                             title.color: ThemeManager.textPrimary
-                            
+
                             Icon {
                                 name: "view-grid-symbolic"
                                 width: units.gu(3)
@@ -451,25 +471,25 @@ MainView {
                                 SlotsLayout.position: SlotsLayout.Leading
                             }
                         }
-                        
+
                         onClicked: {
-                                        stackView.clear()
+                            stackView.clear()
                             stackView.push(categoriesPage)
-                            if (root.width <= units.gu(70)) {
+                            if (useOverlayMode) {
                                 drawer.close()
                             }
                         }
                     }
-                    
+
                     // Settings
                     ListItem {
                         height: units.gu(6)
                         color: ThemeManager.surfaceColor
-                        
+
                         ListItemLayout {
                             title.text: i18n.tr("Settings")
                             title.color: ThemeManager.textPrimary
-                            
+
                             Icon {
                                 name: "settings"
                                 width: units.gu(3)
@@ -478,14 +498,324 @@ MainView {
                                 SlotsLayout.position: SlotsLayout.Leading
                             }
                         }
-                        
+
                         onClicked: {
-                                        stackView.clear()
+                            stackView.clear()
                             stackView.push(settingsPage)
-                            if (root.width <= units.gu(70)) {
+                            if (useOverlayMode) {
                                 drawer.close()
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // RESIZE MODE: Sidebar with Row Layout (Tablet/Landscape)
+    Rectangle {
+        id: resizeSidebar
+        visible: !useOverlayMode
+        y: offlineBanner.visible ? offlineBanner.height : 0
+        width: sidebarOpen ? units.gu(30) : 0
+        height: root.height - y
+        color: ThemeManager.surfaceColor
+        clip: true
+
+        Behavior on width {
+            NumberAnimation { duration: UbuntuAnimation.FastDuration }
+        }
+
+        Flickable {
+            anchors.fill: parent
+            contentHeight: resizeSidebarContent.height
+            visible: sidebarOpen
+
+            Column {
+                id: resizeSidebarContent
+                width: parent.width
+                spacing: 0
+
+                // ========================================
+                // DARK MODE TOGGLE
+                // ========================================
+
+                Rectangle {
+                    width: parent.width
+                    height: units.gu(6)
+                    color: ThemeManager.cardColor
+
+                    Row {
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            margins: units.gu(2)
+                            verticalCenter: parent.verticalCenter
+                        }
+                        spacing: units.gu(1)
+
+                        Icon {
+                            name: ThemeManager.isDarkMode ? "torch-on" : "torch-off"
+                            width: units.gu(3)
+                            height: units.gu(3)
+                            color: ThemeManager.textPrimary
+                        }
+
+                        Label {
+                            text: i18n.tr("Dark Mode")
+                            color: ThemeManager.textPrimary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Item { Layout.fillWidth: true; width: units.gu(1) }
+
+                        Switch {
+                            checked: ThemeManager.isDarkMode
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            onCheckedChanged: {
+                                if (checked !== ThemeManager.isDarkMode) {
+                                    ThemeManager.toggleDarkMode()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: units.dp(1)
+                    color: ThemeManager.dividerColor
+                }
+
+                // ========================================
+                // USER INFO HEADER (if logged in)
+                // ========================================
+
+                Rectangle {
+                    width: parent.width
+                    height: resizeUserInfoContent.height + units.gu(2)
+                    color: ThemeManager.cardColor
+                    visible: authManager.isAuthenticated && twitchFetcher.hasUserInfo
+
+                    Column {
+                        id: resizeUserInfoContent
+                        anchors {
+                            margins: units.gu(2)
+                            top: parent.top
+                            left: parent.left
+                            right: parent.right
+                        }
+                        spacing: units.gu(1)
+
+                        // Profile image
+                        Rectangle {
+                            width: units.gu(8)
+                            height: units.gu(8)
+                            radius: width / 2
+                            color: ThemeManager.borderColor
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            clip: true
+
+                            Image {
+                                anchors.fill: parent
+                                source: twitchFetcher.currentUserProfileImage
+                                fillMode: Image.PreserveAspectCrop
+                                visible: source != ""
+                                smooth: true
+                            }
+
+                            Icon {
+                                anchors.centerIn: parent
+                                name: "contact"
+                                width: units.gu(5)
+                                height: units.gu(5)
+                                visible: twitchFetcher.currentUserProfileImage == ""
+                                color: ThemeManager.textSecondary
+                            }
+                        }
+
+                        // Display name
+                        Label {
+                            text: twitchFetcher.currentUserDisplayName
+                            font.bold: true
+                            fontSize: "medium"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            color: ThemeManager.textPrimary
+                        }
+
+                        // Login name
+                        Label {
+                            text: "@" + twitchFetcher.currentUserLogin
+                            fontSize: "small"
+                            color: ThemeManager.textSecondary
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+
+                        // Status badges
+                        Row {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: units.gu(0.5)
+
+                            Rectangle {
+                                width: resizeAdFreeLabel.width + units.gu(1)
+                                height: resizeAdFreeLabel.height + units.gu(0.5)
+                                radius: units.gu(0.5)
+                                color: twitchFetcher.hasGraphQLToken ? ThemeManager.positiveColor : ThemeManager.cardColor
+
+                                Label {
+                                    id: resizeAdFreeLabel
+                                    anchors.centerIn: parent
+                                    text: "Ad-Free"
+                                    fontSize: "x-small"
+                                    color: twitchFetcher.hasGraphQLToken ? "white" : ThemeManager.textSecondary
+                                }
+                            }
+
+                            Rectangle {
+                                width: resizeOauthLabel.width + units.gu(1)
+                                height: resizeOauthLabel.height + units.gu(0.5)
+                                radius: units.gu(0.5)
+                                color: authManager.isAuthenticated ? ThemeManager.positiveColor : ThemeManager.cardColor
+
+                                Label {
+                                    id: resizeOauthLabel
+                                    anchors.centerIn: parent
+                                    text: "OAuth"
+                                    fontSize: "x-small"
+                                    color: authManager.isAuthenticated ? "white" : ThemeManager.textSecondary
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ========================================
+                // LOGIN PROMPT (if not logged in)
+                // ========================================
+
+                Rectangle {
+                    width: parent.width
+                    height: resizeLoginPrompt.height + units.gu(4)
+                    color: ThemeManager.cardColor
+                    visible: !authManager.isAuthenticated
+
+                    Column {
+                        id: resizeLoginPrompt
+                        anchors {
+                            margins: units.gu(2)
+                            top: parent.top
+                            left: parent.left
+                            right: parent.right
+                        }
+                        spacing: units.gu(1)
+
+                        Icon {
+                            name: "contact"
+                            width: units.gu(6)
+                            height: units.gu(6)
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            color: ThemeManager.textSecondary
+                        }
+
+                        Label {
+                            text: i18n.tr("Not logged in")
+                            font.bold: true
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            color: ThemeManager.textPrimary
+                        }
+
+                        Button {
+                            text: i18n.tr("Login to access followed streams")
+                            width: parent.width
+                            color: ThemeManager.accentColor
+                            onClicked: {
+                                stackView.push(settingsPage)
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: units.dp(1)
+                    color: ThemeManager.dividerColor
+                }
+
+                // ========================================
+                // NAVIGATION ITEMS
+                // ========================================
+
+                // Followed Channels (only if authenticated)
+                ListItem {
+                    visible: authManager.isAuthenticated
+                    height: units.gu(6)
+                    color: ThemeManager.surfaceColor
+
+                    ListItemLayout {
+                        title.text: i18n.tr("Followed Channels")
+                        title.color: ThemeManager.textPrimary
+
+                        Icon {
+                            name: "stock_video"
+                            width: units.gu(3)
+                            height: units.gu(3)
+                            color: ThemeManager.textPrimary
+                            SlotsLayout.position: SlotsLayout.Leading
+                        }
+                    }
+
+                    onClicked: {
+                        stackView.clear()
+                        stackView.push(followedPage)
+                    }
+                }
+
+                // Browse Categories
+                ListItem {
+                    height: units.gu(6)
+                    color: ThemeManager.surfaceColor
+
+                    ListItemLayout {
+                        title.text: i18n.tr("Browse Categories")
+                        title.color: ThemeManager.textPrimary
+
+                        Icon {
+                            name: "view-grid-symbolic"
+                            width: units.gu(3)
+                            height: units.gu(3)
+                            color: ThemeManager.textPrimary
+                            SlotsLayout.position: SlotsLayout.Leading
+                        }
+                    }
+
+                    onClicked: {
+                        stackView.clear()
+                        stackView.push(categoriesPage)
+                    }
+                }
+
+                // Settings
+                ListItem {
+                    height: units.gu(6)
+                    color: ThemeManager.surfaceColor
+
+                    ListItemLayout {
+                        title.text: i18n.tr("Settings")
+                        title.color: ThemeManager.textPrimary
+
+                        Icon {
+                            name: "settings"
+                            width: units.gu(3)
+                            height: units.gu(3)
+                            color: ThemeManager.textPrimary
+                            SlotsLayout.position: SlotsLayout.Leading
+                        }
+                    }
+
+                    onClicked: {
+                        stackView.clear()
+                        stackView.push(settingsPage)
                     }
                 }
             }
@@ -495,26 +825,39 @@ MainView {
     // ========================================
     // MAIN CONTENT AREA (StackView)
     // ========================================
-    
+
     StackView {
         id: stackView
-        anchors {
-            top: offlineBanner.visible ? offlineBanner.bottom : parent.top
-            left: parent.left
-            right: parent.right
-            bottom: parent.bottom
+        x: useOverlayMode ? 0 : resizeSidebar.width
+        y: offlineBanner.visible ? offlineBanner.height : 0
+        width: parent.width - (useOverlayMode ? 0 : resizeSidebar.width)
+        height: parent.height - (offlineBanner.visible ? offlineBanner.height : 0)
+
+        onWidthChanged: {
+            console.log("StackView width changed:", width,
+                       "| parent.width:", parent.width,
+                       "| resizeSidebar.width:", resizeSidebar.width,
+                       "| useOverlayMode:", useOverlayMode,
+                       "| sidebarOpen:", sidebarOpen)
         }
-        
+
+        onCurrentItemChanged: {
+            if (currentItem) {
+                console.log("StackView currentItem changed | StackView.width:", width,
+                           "| currentItem.width:", currentItem.width)
+            }
+        }
+
         // Dim when player is active
         opacity: player.isActive && player.state === "fullscreen" ? 0 : 1
 
         // FIX: Disable interaction when player is fullscreen
         enabled: !(player.isActive && player.state === "fullscreen")
-        
+
         Behavior on opacity {
             NumberAnimation { duration: 300 }
         }
-        
+
         // No initial item - we push it in onCompleted based on auth state
     }
     
@@ -543,15 +886,15 @@ MainView {
         isActive: false
         
         onPlayerMinimized: {
-                // StackView becomes visible again (opacity animation)
+            // StackView becomes visible again (opacity animation)
         }
-        
+
         onPlayerMaximized: {
-                drawer.close()
+            // Sidebar/drawer is closed via global Connections handler
         }
-        
+
         onPlayerClosed: {
-                // StackView becomes visible again (opacity animation)
+            // StackView becomes visible again (opacity animation)
         }
     }
     

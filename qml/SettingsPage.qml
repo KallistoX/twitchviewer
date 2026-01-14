@@ -21,7 +21,19 @@ import QtQuick.Layouts 1.3
 
 Page {
     id: settingsPage
-    
+
+    // Force the page to match StackView width
+    width: StackView.view ? StackView.view.width : parent.width
+    height: StackView.view ? StackView.view.height : parent.height
+
+    onWidthChanged: {
+        console.log("SettingsPage width changed:", width)
+    }
+
+    Component.onCompleted: {
+        console.log("SettingsPage created | width:", width)
+    }
+
     header: PageHeader {
         id: settingsHeader
         title: i18n.tr('Settings')
@@ -30,12 +42,13 @@ Page {
             Action {
                 iconName: "navigation-menu"
                 text: i18n.tr("Menu")
-                onTriggered: drawer.open()
+                onTriggered: root.toggleSidebar()
             }
         ]
     }
     
     Flickable {
+        id: settingsFlickable
         anchors {
             top: settingsHeader.bottom
             left: parent.left
@@ -44,7 +57,11 @@ Page {
         }
         contentHeight: settingsColumn.height
         clip: true
-        
+
+        onWidthChanged: {
+            console.log("SettingsPage Flickable width changed:", width, "| parent.width:", parent.width)
+        }
+
         Column {
             id: settingsColumn
             spacing: units.gu(3)
@@ -54,7 +71,10 @@ Page {
                 left: parent.left
                 right: parent.right
             }
-            width: parent.width - units.gu(4)
+
+            onWidthChanged: {
+                console.log("SettingsPage Column width changed:", width, "| parent.width:", parent.width)
+            }
             
             // ========================================
             // SECTION 1: AD-FREE STREAMS (GraphQL Token)
@@ -206,81 +226,6 @@ Page {
                         visible: text.length > 0
                     }
                     
-                    // Ad Status Display (after validation)
-                    Rectangle {
-                        width: parent.width
-                        height: adStatusColumn.height + units.gu(1)
-                        color: theme.palette.normal.base
-                        radius: units.gu(0.5)
-                        visible: twitchFetcher.debugShowAds !== "N/A"
-                        
-                        Column {
-                            id: adStatusColumn
-                            anchors {
-                                margins: units.gu(0.5)
-                                top: parent.top
-                                left: parent.left
-                                right: parent.right
-                            }
-                            spacing: units.gu(0.5)
-                            
-                            Label {
-                                text: i18n.tr("Last Validation Result:")
-                                font.bold: true
-                                fontSize: "small"
-                            }
-                            
-                            Row {
-                                width: parent.width
-                                spacing: units.gu(1)
-                                
-                                Label {
-                                    text: "Show Ads:"
-                                    width: units.gu(12)
-                                    fontSize: "small"
-                                }
-                                
-                                Label {
-                                    text: twitchFetcher.debugShowAds
-                                    color: twitchFetcher.debugShowAds === "false" ? theme.palette.normal.positive : theme.palette.normal.negative
-                                    fontSize: "small"
-                                    font.bold: true
-                                }
-                            }
-                            
-                            Row {
-                                width: parent.width
-                                spacing: units.gu(1)
-                                
-                                Label {
-                                    text: "Hide Ads:"
-                                    width: units.gu(12)
-                                    fontSize: "small"
-                                }
-                                
-                                Label {
-                                    text: twitchFetcher.debugHideAds
-                                    color: twitchFetcher.debugHideAds === "true" ? theme.palette.normal.positive : theme.palette.normal.negative
-                                    fontSize: "small"
-                                    font.bold: true
-                                }
-                            }
-                            
-                            Label {
-                                width: parent.width
-                                text: {
-                                    if (twitchFetcher.debugShowAds === "false" || twitchFetcher.debugHideAds === "true") {
-                                        return "🎉 " + i18n.tr("Ad-free playback enabled!")
-                                    } else {
-                                        return "⚠️  " + i18n.tr("Ads may appear (Turbo/Sub required)")
-                                    }
-                                }
-                                wrapMode: Text.WordWrap
-                                fontSize: "small"
-                                font.bold: true
-                            }
-                        }
-                    }
                     
                     Label {
                         width: parent.width

@@ -85,5 +85,8 @@ __pycache__/
 node_modules/
 vendor/
 
-# Config
+# CRITICAL: Never commit actual config!
 config.cpp
+
+# User settings (may contain tokens)
+*.conf
