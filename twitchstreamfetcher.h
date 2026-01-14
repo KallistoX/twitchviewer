@@ -28,9 +28,12 @@
  #include <QDateTime>
  #include <QUuid>
  #include <QSettings>
+ #include <QTimer>
+ #include <QMap>
  
  // Forward declaration
  class TwitchAuthManager;
+ class NetworkManager;
  
  class TwitchStreamFetcher : public QObject
  {
@@ -101,6 +104,8 @@
      // GraphQL Token property getters
      bool hasGraphQLToken() const { return !m_graphQLToken.isEmpty(); }
      bool isValidatingToken() const { return m_isValidatingToken; }
+
+     void setNetworkManager(NetworkManager *networkManager);
  
  signals:
      // Emitted when stream URL is ready
@@ -152,17 +157,24 @@
  
      // Handle top categories response (BrowsePage_AllDirectories query)
      void onTopCategoriesReceived();
- 
+
+     // Handle request timeout
+     void onRequestTimeout();
+
  private:
      // Network manager
      QNetworkAccessManager *m_networkManager;
-     
+
      // Auth manager reference
      TwitchAuthManager *m_authManager;
-     
+
      // Settings for token caching
      QSettings *m_settings;
-     
+
+     // Request timeout management
+     QMap<QNetworkReply*, QTimer*> m_timeoutTimers;
+     static const int REQUEST_TIMEOUT_MS = 15000; // 15 seconds
+
      // Current request data
      QString m_currentChannel;
      QString m_requestedQuality;
@@ -223,6 +235,12 @@
      // GraphQL Token helpers
      void loadGraphQLToken();
      void saveGraphQLToken();
+
+     // Request timeout helpers
+     void setupRequestTimeout(QNetworkReply *reply);
+     void cleanupRequest(QNetworkReply *reply);
+
+     NetworkManager *m_netStatusManager;
  };
  
  #endif // TWITCHSTREAMFETCHER_H

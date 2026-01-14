@@ -23,7 +23,8 @@
  #include <QNetworkReply>
  #include <QTimer>
  #include <QSettings>
- 
+ class NetworkManager;
+
  /**
   * Manages Twitch OAuth authentication using Device Flow
   * 
@@ -61,6 +62,8 @@
      
      // Access token for API requests
      QString accessToken() const { return m_accessToken; }
+
+     void setNetworkManager(NetworkManager *networkManager);
  
  public slots:
      // Start OAuth Device Flow
@@ -150,6 +153,8 @@
      void clearTokens();
      void startPolling();
      void stopPolling();
+
+     NetworkManager *m_netStatusManager;
  };
  
  #endif // TWITCHAUTHMANAGER_H

@@ -229,8 +229,7 @@ Page {
                             MouseArea {
                                 anchors.fill: parent
                                 onClicked: {
-                                    console.log("Starting stream:", model.userLogin)
-                                    watchStream(model.userLogin)
+                                                        watchStream(model.userLogin)
                                 }
                             }
                         }
@@ -256,7 +255,6 @@ Page {
     
     // Functions
     function refreshStreams() {
-        console.log("Refreshing streams for category:", categoryId)
         isRefreshing = true
         paginationCursor = ""
         helixApi.getStreamsForGame(categoryId, 20)
@@ -265,20 +263,17 @@ Page {
     function loadMoreStreams() {
         if (!hasMorePages || isLoadingMore) return
         
-        console.log("Loading more streams, cursor:", paginationCursor)
         isLoadingMore = true
         
         helixApi.getStreamsForGameWithCursor(categoryId, 20, paginationCursor)
     }
     
     function watchStream(channelName) {
-        console.log("Requesting stream:", channelName)
         streamRequested(channelName, "best")
     }
     
     // Load streams on component completion
     Component.onCompleted: {
-        console.log("StreamsForCategoryPage loaded for:", categoryName, "ID:", categoryId)
         if (categoryId.length > 0) {
             refreshStreams()
         }
@@ -290,8 +285,7 @@ Page {
         ignoreUnknownSignals: true
         
         onStreamsReceived: {
-            console.log("Streams received:", streams.length)
-            
+                
             // If refreshing, clear model. If loading more, append
             if (isRefreshing) {
                 streamsModel.clear()
@@ -322,13 +316,10 @@ Page {
             isRefreshing = false
             isLoadingMore = false
             
-            console.log("Streams model now has", streamsModel.count, "items")
-        }
+            }
         
         onStreamsPaginationReceived: {
-            console.log("Streams with pagination received:", streams.length)
-            console.log("Pagination cursor:", cursor)
-            
+                    
             // If refreshing, clear model. If loading more, append
             if (isRefreshing) {
                 streamsModel.clear()
@@ -363,13 +354,10 @@ Page {
             isRefreshing = false
             isLoadingMore = false
             
-            console.log("Streams model now has", streamsModel.count, "items")
-            console.log("Has more pages:", hasMorePages)
-        }
+                }
         
         onError: {
-            console.error("Helix API error:", message)
-            isRefreshing = false
+                isRefreshing = false
             isLoadingMore = false
         }
     }

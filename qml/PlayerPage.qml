@@ -41,7 +41,6 @@ Item {
     
     // Animation state
     property bool isTransitioning: false
-    property real currentScale: 1.0 // 1.0 = fullscreen, 0.0 = mini size
     
     // Visibility control
     visible: isActive
@@ -61,7 +60,6 @@ Item {
         console.log("=== Player State Changed ===")
         console.log("New state:", state)
         console.log("PlayerPage - w:", width, "h:", height, "x:", x, "y:", y)
-        console.log("PlayerContainer - w:", playerContainer.width, "h:", playerContainer.height, "x:", playerContainer.x, "y:", playerContainer.y)
         console.log("===========================")
     }
     
@@ -71,14 +69,13 @@ Item {
     states: [
         State {
             name: "fullscreen"
-            PropertyChanges { 
+            PropertyChanges {
                 target: playerPage
                 width: root.width
                 height: root.height
                 x: 0
                 y: 0
                 isMiniMode: false
-                currentScale: 1.0
             }
             PropertyChanges {
                 target: controlsOverlay
@@ -98,14 +95,13 @@ Item {
         },
         State {
             name: "mini"
-            PropertyChanges { 
+            PropertyChanges {
                 target: playerPage
                 width: miniWidth
                 height: miniHeight
                 x: miniPosition.x
                 y: miniPosition.y
                 isMiniMode: true
-                currentScale: 0.0
             }
             PropertyChanges {
                 target: controlsOverlay
@@ -133,15 +129,9 @@ Item {
                 PropertyAction { target: playerPage; property: "isTransitioning"; value: true }
                 PropertyAction { target: playerContainer; property: "y"; value: 0 }
                 ParallelAnimation {
-                    NumberAnimation { 
-                        target: playerPage
-                        properties: "x,y,width,height"
-                        duration: 300
-                        easing.type: Easing.OutCubic
-                    }
                     NumberAnimation {
                         target: playerPage
-                        property: "currentScale"
+                        properties: "x,y,width,height"
                         duration: 300
                         easing.type: Easing.OutCubic
                     }
@@ -162,15 +152,9 @@ Item {
                 PropertyAction { target: playerPage; property: "isTransitioning"; value: true }
                 PropertyAction { target: playerContainer; property: "y"; value: 0 }
                 ParallelAnimation {
-                    NumberAnimation { 
-                        target: playerPage
-                        properties: "x,y,width,height"
-                        duration: 300
-                        easing.type: Easing.OutCubic
-                    }
                     NumberAnimation {
                         target: playerPage
-                        property: "currentScale"
+                        properties: "x,y,width,height"
                         duration: 300
                         easing.type: Easing.OutCubic
                     }
@@ -217,14 +201,12 @@ Item {
             autoPlay: false
             
             Component.onDestruction: {
-                console.log("Video component being destroyed")
                 if (playbackState === MediaPlayer.PlayingState) {
                     stop()
                 }
             }
             
             onStatusChanged: {
-                console.log("Video status:", status)
                 if (status === MediaPlayer.InvalidMedia) {
                     statusLabel.text = "Error: Invalid media"
                     statusOverlay.visible = true
@@ -232,7 +214,6 @@ Item {
                     statusLabel.text = i18n.tr('Loading stream...')
                     statusOverlay.visible = true
                 } else if (status === MediaPlayer.LoadedMedia) {
-                    console.log("Media loaded successfully")
                     statusOverlay.visible = false
                 } else if (status === MediaPlayer.Loading || status === MediaPlayer.Buffering) {
                     statusLabel.text = i18n.tr('Buffering...')
@@ -242,14 +223,12 @@ Item {
             
             onErrorChanged: {
                 if (error !== MediaPlayer.NoError) {
-                    console.error("Video error:", errorString)
-                    statusLabel.text = "Video error: " + errorString
+                        statusLabel.text = "Video error: " + errorString
                     statusOverlay.visible = true
                 }
             }
             
             onPlaybackStateChanged: {
-                console.log("Playback state:", playbackState)
                 if (playbackState === MediaPlayer.PlayingState) {
                     statusOverlay.visible = false
                     if (!isMiniMode) {
@@ -303,147 +282,21 @@ Item {
             anchors.fill: parent
             visible: !isTransitioning
             z: 5
-            
+
             // Track gesture state
-            property bool isPinching: false
             property bool isSwiping: false
             property bool isDragging: false
-            property real pinchStartScale: 1.0
             property real swipeStartY: 0
-            property point pinchCentroid: Qt.point(0, 0)
             property point dragStartPos
-    
-            readonly property real pinch_in_sensitivity: 0.7
-            readonly property real pinch_out_log_max: 200
             
-            // FIXED: Pinch to scale (minimize) - FULLSCREEN
-            PinchHandler {
-                id: pinchHandler
-                target: null
-                enabled: !isMiniMode && !gestureLayer.isDragging
-                
-                onActiveChanged: {
-                    if (active) {
-                        gestureLayer.isPinching = true
-                        gestureLayer.pinchStartScale = playerPage.currentScale
-                        gestureLayer.pinchCentroid = centroid.position
-                        hideControls()
-                        console.log("Pinch started (fullscreen), startScale:", gestureLayer.pinchStartScale)
-                    } else {
-                        gestureLayer.isPinching = false
-                        console.log("Pinch finished, finalScale:", playerPage.currentScale)
-                        
-                        if (playerPage.currentScale < 0.5) {
-                            console.log("Scale < 0.5, minimizing")
-                            minimizePlayer()
-                        } else {
-                            console.log("Scale >= 0.5, staying fullscreen")
-                            playerPage.state = "fullscreen"
-                        }
-                    }
-                }
-                
-                onScaleChanged: {
-                    if (active) {
-            // CRITICAL FIX: Handle pinch IN (scale < 1)
-            var targetScale
-            
-            if (scale < 1.0) {
-                // Pinch IN: fingers moving together
-                // scale goes from 1.0 → 0 (smaller)
-                // We want currentScale to go from startScale → 0
-                
-                // Invert: 1/scale goes from 1 → infinity as fingers close
-                var inverseScale = 1.0 / scale
-                
-                // Logarithmic mapping: inverseScale [1 → 100] maps to [0 → 1]
-                var logScale = Math.log(inverseScale) / Math.log(100)
-                logScale = Math.min(1, Math.max(0, logScale))
-                        
-                // Decrease from startScale towards 0
-                targetScale = gestureLayer.pinchStartScale * (1.0 - logScale)
-                
-            } else {
-                // Pinch OUT: fingers moving apart (should not happen in fullscreen, but handle it)
-                // scale > 1: just clamp to startScale (no growing in fullscreen)
-                targetScale = gestureLayer.pinchStartScale
-            }
-            
-                        playerPage.currentScale = Math.max(0, Math.min(1, targetScale))
-                        gestureLayer.pinchCentroid = centroid.position
-                        applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
-                        
-                        if (Math.random() < 0.1) {
-                console.log("Pinch IN: scale=" + scale.toFixed(2) + 
-                            " logScale=" + (scale < 1 ? logScale.toFixed(2) : "N/A") +
-                            " current=" + playerPage.currentScale.toFixed(2))
-                        }
-                    }
-                }
-            }
-            
-            // FIXED: Pinch to zoom - MINI MODE (maximize)
-            PinchHandler {
-                id: miniPinchHandler
-                target: null
-                enabled: isMiniMode && !gestureLayer.isDragging
-    
-    readonly property real pinch_out_max: 1000  // ← Increased from 200!
-                
-                onActiveChanged: {
-                    if (active) {
-                        gestureLayer.isPinching = true
-                        gestureLayer.pinchStartScale = playerPage.currentScale
-                        gestureLayer.pinchCentroid = centroid.position
-                        console.log("Pinch started (mini), startScale:", playerPage.currentScale)
-                    } else {
-                        gestureLayer.isPinching = false
-                        console.log("Pinch finished (mini), finalScale:", playerPage.currentScale)
-                        
-                        if (playerPage.currentScale > 0.5) {
-                            console.log("Scale > 0.5, maximizing")
-                            maximizePlayer()
-                        } else {
-                            console.log("Scale <= 0.5, staying mini")
-                            playerPage.state = "mini"
-                        }
-                    }
-                }
-                
-                onScaleChanged: {
-                    if (active) {
-            // CRITICAL FIX: Clamp scale before log to prevent instant jumps
-            var clampedScale = Math.min(scale, pinch_out_max)
-            
-            // Logarithmic mapping: scale [1 → pinch_out_max] maps to [0 → 1]
-            var logScale = Math.log(clampedScale) / Math.log(pinch_out_max)
-            logScale = Math.max(0, Math.min(1, logScale))
-                        
-                        // Interpolate from startScale to 1.0
-                        var targetScale = gestureLayer.pinchStartScale + (1.0 - gestureLayer.pinchStartScale) * logScale
-                        
-                        playerPage.currentScale = targetScale
-                        gestureLayer.pinchCentroid = centroid.position
-                        applyLiveScaleAtCentroid(playerPage.currentScale, gestureLayer.pinchCentroid)
-                        
-                        if (Math.random() < 0.1) {
-                console.log("Pinch OUT: scale=" + scale.toFixed(0) + 
-                            " clamped=" + clampedScale.toFixed(0) +
-                                        " log=" + logScale.toFixed(2) +
-                                        " current=" + playerPage.currentScale.toFixed(2))
-                        }
-                    }
-                }
-            }
             
             // Tap to toggle controls - FULLSCREEN ONLY
             TapHandler {
                 id: tapHandler
-                enabled: !isMiniMode && !gestureLayer.isPinching && !gestureLayer.isSwiping
+                enabled: !isMiniMode && !gestureLayer.isSwiping
                 
                 onTapped: {
-                    console.log("Video tapped")
-                    if (controlsOverlay.opacity > 0) {
+                        if (controlsOverlay.opacity > 0) {
                         hideControls()
                     } else {
                         showControlsTemporarily()
@@ -451,44 +304,45 @@ Item {
                 }
             }
             
-            // Swipe up to close - FULLSCREEN (manual Y tracking)
+            // Swipe up to close, swipe down to minimize - FULLSCREEN
             DragHandler {
                 id: swipeHandler
-                enabled: !isMiniMode && !gestureLayer.isPinching
+                enabled: !isMiniMode && !gestureLayer.isDragging
                 target: null  // Don't use target, manage Y manually
                 yAxis.enabled: true
                 xAxis.enabled: false
-                
+
                 property real startY: 0
-                
+
                 onActiveChanged: {
                     if (active) {
                         gestureLayer.isSwiping = true
                         startY = playerContainer.y
-                        console.log("Swipe gesture started, startY:", startY)
-                    } else {
+                        hideControls()
+                            } else {
                         gestureLayer.isSwiping = false
-                        
+
                         var deltaY = playerContainer.y - startY
-                        console.log("Swipe gesture ended, deltaY:", deltaY, "current Y:", playerContainer.y)
-                        
-                        // Check if swiped up enough
-                        if (deltaY < -units.gu(15)) {
-                            console.log("Swipe up threshold reached, closing")
-                            // Animate completely out
-                            swipeOutAnimation.start()
-                        } else {
-                            console.log("Swipe threshold not reached, snapping back")
-                            // Snap back
+        
+                        // Swipe DOWN = positive deltaY
+                        if (deltaY > units.gu(15)) {
+                                    minimizeToCorner()
+                        }
+                        // Swipe UP = negative deltaY
+                        else if (deltaY < -units.gu(15)) {
+                                    swipeOutAnimation.start()
+                        }
+                        else {
+                                    // Snap back
                             resetSwipeAnimation.start()
                         }
                     }
                 }
-                
+
                 onTranslationChanged: {
                     if (active) {
                         // Apply Y translation manually
-                        playerContainer.y = Math.min(0, translation.y)
+                        playerContainer.y = translation.y
                     }
                 }
             }
@@ -498,7 +352,7 @@ Item {
             // Drag mini player to reposition OR dismiss - MINI MODE
             DragHandler {
                 id: miniDragHandler
-                enabled: isMiniMode && !gestureLayer.isPinching
+                enabled: isMiniMode
                 target: playerPage
                 
                 property point startPos
@@ -513,15 +367,13 @@ Item {
                         var centerX = playerPage.x + playerPage.width / 2
                         isInLeftSide = centerX < root.width / 2
                         
-                        console.log("Drag started from", isInLeftSide ? "LEFT" : "RIGHT", "side")
-                    } else {
+                            } else {
                         gestureLayer.isDragging = false
                         
                         var deltaX = playerPage.x - startPos.x
                         var currentCenterX = playerPage.x + playerPage.width / 2
                         
-                        console.log("Drag ended, deltaX:", deltaX, "currentCenterX:", currentCenterX)
-                        
+                                
                         // Smart dismiss logic: only from outer edges
                         var shouldDismiss = false
                         
@@ -534,11 +386,9 @@ Item {
                         }
                         
                         if (shouldDismiss) {
-                            console.log("Dismiss threshold reached")
-                            dismissMiniPlayer()
+                                    dismissMiniPlayer()
                         } else {
-                            console.log("Dismiss threshold not reached, snapping to corner")
-                            // Snap to nearest corner
+                                    // Snap to nearest corner
                             snapToNearestCorner()
                         }
                     }
@@ -613,8 +463,7 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        console.log("Minimize button clicked")
-                        minimizePlayer()
+                                minimizePlayer()
                     }
                 }
             }
@@ -645,8 +494,7 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        console.log("Exit button clicked in fullscreen")
-                        closePlayer()
+                                closePlayer()
                     }
                 }
             }
@@ -672,8 +520,7 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        console.log("Play/Pause clicked")
-                        if (videoPlayer.playbackState === MediaPlayer.PlayingState) {
+                                if (videoPlayer.playbackState === MediaPlayer.PlayingState) {
                             videoPlayer.pause()
                         } else {
                             videoPlayer.play()
@@ -769,8 +616,7 @@ Item {
                             MouseArea {
                                 anchors.fill: parent
                                 onClicked: {
-                                    console.log("Switching to quality:", model.name)
-                                    switchQuality(model.name)
+                                                    switchQuality(model.name)
                                     qualityPopup.visible = false
                                     showControlsTemporarily()
                                 }
@@ -791,7 +637,39 @@ Item {
             color: "transparent"
             visible: false
             z: 100
-            
+
+            // Maximize button (top left)
+            Rectangle {
+                id: maximizeButton
+                anchors {
+                    top: parent.top
+                    left: parent.left
+                    margins: units.gu(0.5)
+                }
+                width: units.gu(3)
+                height: units.gu(3)
+                color: Qt.rgba(0, 0, 0, 0.8)
+                radius: units.gu(0.5)
+                border.color: "white"
+                border.width: units.dp(1)
+
+                // Icon: Maximize symbol (4 corners expanding outward)
+                Icon {
+                    anchors.centerIn: parent
+                    name: "view-fullscreen"
+                    width: units.gu(2)
+                    height: units.gu(2)
+                    color: "white"
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                                maximizePlayer()
+                    }
+                }
+            }
+
             // Close button (top right)
             Rectangle {
                 anchors {
@@ -805,7 +683,7 @@ Item {
                 radius: units.gu(0.5)
                 border.color: "white"
                 border.width: units.dp(1)
-                
+
                 Icon {
                     anchors.centerIn: parent
                     name: "close"
@@ -813,12 +691,11 @@ Item {
                     height: units.gu(2)
                     color: "white"
                 }
-                
+
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        console.log("Mini player close clicked")
-                        dismissMiniPlayer()
+                                dismissMiniPlayer()
                     }
                 }
             }
@@ -864,11 +741,11 @@ Item {
         duration: 200
         easing.type: Easing.OutCubic
     }
-    
+
     // Swipe out completely animation
     SequentialAnimation {
         id: swipeOutAnimation
-        
+
         NumberAnimation {
             target: playerContainer
             property: "y"
@@ -876,11 +753,10 @@ Item {
             duration: 200
             easing.type: Easing.InCubic
         }
-        
+
         ScriptAction {
             script: {
-                console.log("Swipe out animation complete, closing player")
-                closePlayer()
+                    closePlayer()
             }
         }
     }
@@ -904,21 +780,35 @@ Item {
     }
     
     function minimizePlayer() {
-        console.log("Minimizing player (state transition to mini)")
         hideControls()
-        
+
         // Reset any swipe offset
         playerContainer.y = 0
-        
+
         // State transition will animate to mini position
         playerPage.state = "mini"
-        
+
         // Notify Main.qml that we minimized (no reload!)
+        playerMinimized()
+    }
+
+    function minimizeToCorner() {
+        hideControls()
+
+        // Set mini position to bottom-right corner
+        miniPosition = Qt.point(
+            root.width - miniWidth - units.gu(2),
+            root.height - miniHeight - units.gu(2)
+        )
+
+        // Transition to mini state
+        playerPage.state = "mini"
+
+        // Notify Main.qml that we minimized
         playerMinimized()
     }
     
     function maximizePlayer() {
-        console.log("Maximizing player (state transition to fullscreen)")
         
         // Reset any swipe offset
         playerContainer.y = 0
@@ -932,7 +822,6 @@ Item {
     }
     
     function closePlayer() {
-        console.log("Closing player completely")
         
         // Stop video
         if (videoPlayer.playbackState === MediaPlayer.PlayingState) {
@@ -954,7 +843,6 @@ Item {
     }
     
     function dismissMiniPlayer() {
-        console.log("Dismissing mini player")
         
         // Animate out based on side
         var centerX = playerPage.x + playerPage.width / 2
@@ -1022,59 +910,15 @@ Item {
         }
     }
     
-    function applyLiveScaleAtCentroid(scale, centroid) {
-        // CRITICAL: This function is called DURING pinching
-        // We manually set size/position WITHOUT triggering state changes
-        
-        // Interpolate between mini and fullscreen, centered at finger position
-        // scale: 1.0 = fullscreen, 0.0 = mini
-        // centroid: point where fingers are (relative to playerPage currently)
-        
-        var fullWidth = root.width
-        var fullHeight = root.height
-        var miniW = miniWidth
-        var miniH = miniHeight
-        
-        // Interpolate dimensions
-        var targetWidth = miniW + (fullWidth - miniW) * scale
-        var targetHeight = miniH + (fullHeight - miniH) * scale
-        
-        // Convert centroid from playerPage-relative to root-relative
-        // centroid is given relative to the current playerPage position
-        var absoluteCentroidX = playerPage.x + centroid.x
-        var absoluteCentroidY = playerPage.y + centroid.y
-        
-        // Calculate position to keep player center at finger centroid
-        // We want: (playerPage.x + targetWidth/2, playerPage.y + targetHeight/2) = absoluteCentroid
-        var targetX = absoluteCentroidX - targetWidth / 2
-        var targetY = absoluteCentroidY - targetHeight / 2
-        
-        // Bounds checking - keep player on screen
-        targetX = Math.max(0, Math.min(root.width - targetWidth, targetX))
-        targetY = Math.max(0, Math.min(root.height - targetHeight, targetY))
-        
-        // Apply to player WITHOUT triggering state changes
-        playerPage.width = targetWidth
-        playerPage.height = targetHeight
-        playerPage.x = targetX
-        playerPage.y = targetY
-        
-        // Also update container size
-        playerContainer.width = targetWidth
-        playerContainer.height = targetHeight
-    }
     
     function switchQuality(qualityName) {
-        console.log("Switching quality to:", qualityName)
         
         var qualityUrl = twitchFetcher.getQualityUrl(qualityName)
         
         if (qualityUrl === "") {
-            console.error("No URL found for quality:", qualityName)
             return
         }
         
-        console.log("Quality URL:", qualityUrl.substring(0, 80) + "...")
         
         var wasPlaying = videoPlayer.playbackState === MediaPlayer.PlayingState
         
@@ -1089,7 +933,6 @@ Item {
     
     // Public function to start a stream
     function startStream(channel, quality) {
-        console.log("Starting stream for channel:", channel, "quality:", quality)
         
         channelName = channel
         requestedQuality = quality
@@ -1114,8 +957,7 @@ Item {
         
         onStreamUrlReady: {
             if (channelName === playerPage.channelName) {
-                console.log("Stream URL ready for", channelName)
-                currentStreamUrl = url
+                        currentStreamUrl = url
                 statusLabel.text = "Starting playback..."
                 videoPlayer.source = url
                 videoPlayer.play()
@@ -1126,8 +968,7 @@ Item {
         }
         
         onAvailableQualitiesChanged: {
-            console.log("Available qualities:", qualities)
-            availableQualities.clear()
+                availableQualities.clear()
             
             for (var i = 0; i < qualities.length; i++) {
                 availableQualities.append({ name: qualities[i] })
@@ -1139,14 +980,12 @@ Item {
         }
         
         onError: {
-            console.error("Stream fetch error:", message)
-            statusLabel.text = "Error: " + message
+                statusLabel.text = "Error: " + message
             statusOverlay.visible = true
         }
         
         onStatusUpdate: {
-            console.log("Status update:", status)
-            statusLabel.text = status
+                statusLabel.text = status
             statusOverlay.visible = true
         }
     }

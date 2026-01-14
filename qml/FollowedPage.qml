@@ -21,9 +21,10 @@ import QtQuick.Layouts 1.3
 
 Page {
     id: followedPage
-    
+    objectName: "followedPage"
+
     property bool isRefreshing: false
-    
+
     // Signal to request stream playback
     signal streamRequested(string channel, string quality)
     
@@ -231,8 +232,7 @@ Page {
                             MouseArea {
                                 anchors.fill: parent
                                 onClicked: {
-                                    console.log("Starting stream:", model.userLogin)
-                                    watchStream(model.userLogin)
+                                                        watchStream(model.userLogin)
                                 }
                             }
                         }
@@ -244,28 +244,23 @@ Page {
     // Functions
     function refreshFollowed() {
         if (!authManager.isAuthenticated) {
-            console.log("Cannot refresh followed streams: not authenticated")
             return
         }
         
         if (!twitchFetcher.hasUserInfo) {
-            console.log("Cannot refresh followed streams: no user info")
             return
         }
         
-        console.log("Refreshing followed streams...")
         isRefreshing = true
         helixApi.getFollowedStreams(twitchFetcher.currentUserId, 100)
     }
     
     function watchStream(channelName) {
-        console.log("Requesting stream:", channelName)
         streamRequested(channelName, "best")
     }
     
     // Load followed streams on component completion
     Component.onCompleted: {
-        console.log("FollowedPage loaded")
         if (authManager.isAuthenticated && twitchFetcher.hasUserInfo) {
             refreshFollowed()
         }
@@ -277,8 +272,7 @@ Page {
         ignoreUnknownSignals: true
         
         onFollowedStreamsReceived: {
-            console.log("Followed streams received:", streams.length)
-            followedModel.clear()
+                followedModel.clear()
             
             for (var i = 0; i < streams.length; i++) {
                 var stream = streams[i]
@@ -304,12 +298,10 @@ Page {
             }
             
             isRefreshing = false
-            console.log("Followed model populated with", followedModel.count, "items")
-        }
+            }
         
         onError: {
-            console.error("Helix API error:", message)
-            isRefreshing = false
+                isRefreshing = false
         }
     }
     
@@ -320,8 +312,7 @@ Page {
         onCurrentUserChanged: {
             // When user info is loaded, fetch followed streams
             if (twitchFetcher.hasUserInfo && followedModel.count === 0) {
-                console.log("User info loaded, fetching followed streams...")
-                refreshFollowed()
+                        refreshFollowed()
             }
         }
     }

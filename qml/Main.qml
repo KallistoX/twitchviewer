@@ -31,32 +31,121 @@ MainView {
     
     // Background color from theme
     backgroundColor: ThemeManager.backgroundColor
-    
+
     Component.onCompleted: {
-        console.log("MainView loaded")
-        console.log("twitchFetcher exists:", typeof twitchFetcher !== 'undefined')
-        console.log("authManager exists:", typeof authManager !== 'undefined')
-        console.log("helixApi exists:", typeof helixApi !== 'undefined')
-        console.log("Dark Mode:", ThemeManager.isDarkMode)
-        
+
         // Fetch user info if GraphQL token exists
         if (typeof twitchFetcher !== 'undefined' && twitchFetcher.hasGraphQLToken) {
-            console.log("GraphQL token found, fetching user info...")
             twitchFetcher.fetchCurrentUser()
         }
-        
+
         // Decide which page to show
         if (authManager.isAuthenticated && twitchFetcher.hasUserInfo) {
-            console.log("User authenticated, loading FollowedPage")
             stackView.push(followedPage)
         } else {
-            console.log("User not authenticated, loading CategoriesPage")
             stackView.push(categoriesPage)
         }
-        
+
         // Show drawer in landscape mode by default
         if (width > height && width > units.gu(100)) {
             drawer.open()
+        }
+    }
+
+    // ========================================
+    // OFFLINE BANNER
+    // ========================================
+    
+    Rectangle {
+        id: offlineBanner
+        anchors {
+            top: parent.top
+            left: parent.left
+            right: parent.right
+        }
+        height: units.gu(5)
+        color: "#FF6B00"  // Orange warning color
+        z: 1000  // Always on top
+        visible: (typeof networkManager !== 'undefined') && (networkManager.hasActiveError || !networkManager.isOnline)
+        
+        Row {
+            anchors.centerIn: parent
+            spacing: units.gu(1)
+            
+            Icon {
+                name: "network-offline"
+                width: units.gu(3)
+                height: units.gu(3)
+                color: "white"
+            }
+            
+            Label {
+                text: i18n.tr("No internet connection - Using offline mode")
+                color: "white"
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+        
+        Behavior on height {
+            NumberAnimation { duration: 200 }
+        }
+    }
+    
+    // ========================================
+    // NETWORK MANAGER CONNECTIONS
+    // ========================================
+    
+    Connections {
+        target: networkManager
+        ignoreUnknownSignals: true
+
+        onOnlineStatusChanged: {
+                }
+
+        onActiveErrorChanged: {
+                }
+
+        onConnectionRestored: {
+
+            // Retry failed operations
+
+            // Fetch user info if we have GraphQL token but no user info yet
+            if (typeof twitchFetcher !== 'undefined' && twitchFetcher.hasGraphQLToken && !twitchFetcher.hasUserInfo) {
+                twitchFetcher.fetchCurrentUser()
+            }
+
+            // Refresh current page content
+            if (stackView.currentItem) {
+                // If on FollowedPage, refresh followed streams
+                if (stackView.currentItem.objectName === "followedPage") {
+                    if (authManager.isAuthenticated && twitchFetcher.hasUserInfo) {
+                        helixApi.getFollowedStreams(twitchFetcher.currentUserId, 100)
+                    }
+                }
+                // If on CategoriesPage, refresh categories
+                else if (stackView.currentItem.objectName === "categoriesPage") {
+                    if (typeof stackView.currentItem.refreshCategories === 'function') {
+                        stackView.currentItem.refreshCategories()
+                    }
+                }
+            }
+
+            // Optional: Show success notification
+            Qt.createQmlObject(
+                'import QtQuick 2.15; import Lomiri.Components 1.3; ' +
+                'Label { ' +
+                '    text: "✅ Connection restored"; ' +
+                '    color: "green"; ' +
+                '    font.bold: true; ' +
+                '    Timer { running: true; interval: 3000; onTriggered: parent.destroy() } ' +
+                '}',
+                root,
+                "connectionRestoredLabel"
+            )
+        }
+        
+        onConnectionLost: {
         }
     }
 
@@ -66,6 +155,7 @@ MainView {
     
     Drawer {
         id: drawer
+        y: offlineBanner.visible ? offlineBanner.height : 0
         width: units.gu(30)
         height: root.height
         edge: Qt.LeftEdge
@@ -336,8 +426,7 @@ MainView {
                         }
                         
                         onClicked: {
-                            console.log("Navigating to FollowedPage")
-                            stackView.clear()
+                                        stackView.clear()
                             stackView.push(followedPage)
                             if (root.width <= units.gu(70)) {
                                 drawer.close()
@@ -364,8 +453,7 @@ MainView {
                         }
                         
                         onClicked: {
-                            console.log("Navigating to CategoriesPage")
-                            stackView.clear()
+                                        stackView.clear()
                             stackView.push(categoriesPage)
                             if (root.width <= units.gu(70)) {
                                 drawer.close()
@@ -392,8 +480,7 @@ MainView {
                         }
                         
                         onClicked: {
-                            console.log("Navigating to SettingsPage")
-                            stackView.clear()
+                                        stackView.clear()
                             stackView.push(settingsPage)
                             if (root.width <= units.gu(70)) {
                                 drawer.close()
@@ -411,7 +498,12 @@ MainView {
     
     StackView {
         id: stackView
-        anchors.fill: parent
+        anchors {
+            top: offlineBanner.visible ? offlineBanner.bottom : parent.top
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
         
         // Dim when player is active
         opacity: player.isActive && player.state === "fullscreen" ? 0 : 1
@@ -435,8 +527,7 @@ MainView {
         ignoreUnknownSignals: true
         
         onStreamRequested: {
-            console.log("Stream requested from page:", channel, quality)
-            player.startStream(channel, quality)
+                player.startStream(channel, quality)
         }
     }
     
@@ -452,18 +543,15 @@ MainView {
         isActive: false
         
         onPlayerMinimized: {
-            console.log("Player minimized, showing StackView")
-            // StackView becomes visible again (opacity animation)
+                // StackView becomes visible again (opacity animation)
         }
         
         onPlayerMaximized: {
-            console.log("Player maximized, hiding StackView")
-            drawer.close()
+                drawer.close()
         }
         
         onPlayerClosed: {
-            console.log("Player closed, showing StackView")
-            // StackView becomes visible again (opacity animation)
+                // StackView becomes visible again (opacity animation)
         }
     }
     
@@ -500,8 +588,7 @@ MainView {
         ignoreUnknownSignals: true
         
         onAuthenticationChanged: {
-            console.log("Authentication changed:", authenticated)
-            
+                
             if (authenticated && twitchFetcher.hasUserInfo) {
                 // User logged in, switch to FollowedPage
                 stackView.clear()
@@ -519,8 +606,7 @@ MainView {
         ignoreUnknownSignals: true
         
         onCurrentUserChanged: {
-            console.log("User info changed")
-            
+                
             // If we just got user info and we're authenticated, switch to FollowedPage
             if (twitchFetcher.hasUserInfo && authManager.isAuthenticated) {
                 if (stackView.currentItem !== followedPage) {

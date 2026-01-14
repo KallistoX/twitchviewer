@@ -24,6 +24,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QTimer>
+#include <QMap>
+
+class NetworkManager;
 
 /**
  * Twitch Helix REST API Client
@@ -110,6 +114,7 @@ public:
 
     // Set OAuth token for authenticated requests
     void setAuthToken(const QString &token) { m_authToken = token; }
+    void setNetworkManager(NetworkManager *networkManager); 
 
 signals:
     // Top Games response
@@ -144,16 +149,24 @@ private slots:
     void onFollowedStreamsReceived();
     void onUserInfoReceived();
     void onAuthValidationReceived();
+    void onRequestTimeout();
 
 private:
     QNetworkAccessManager *m_networkManager;
     QString m_authToken;
-    
+
+    // Request timeout management
+    QMap<QNetworkReply*, QTimer*> m_timeoutTimers;
+    static const int REQUEST_TIMEOUT_MS = 5000; // 5 seconds
+
     // Twitch Helix API
     static const QString HELIX_BASE_URL;
-    
+
     // Helper methods
     QNetworkRequest createRequest(const QString &endpoint, const QString &authToken = QString());
+    void setupRequestTimeout(QNetworkReply *reply);
+    void cleanupRequest(QNetworkReply *reply);
+    NetworkManager *m_netStatusManager;
     void handleNetworkError(QNetworkReply *reply);
 };
 

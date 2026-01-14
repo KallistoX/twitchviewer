@@ -16,19 +16,20 @@
 
 #include "twitchhelixapi.h"
 #include "config.h"
+#include "logging.h"
 #include <QNetworkRequest>
 #include <QUrlQuery>
 #include <QUrl>
-#include <QDebug>
+#include "networkmanager.h"
 
 const QString TwitchHelixAPI::HELIX_BASE_URL = "https://api.twitch.tv/helix";
 
 TwitchHelixAPI::TwitchHelixAPI(QObject *parent)
     : QObject(parent)
+    , m_netStatusManager(nullptr)
     , m_networkManager(new QNetworkAccessManager(this))
     , m_authToken("")
 {
-    qDebug() << "TwitchHelixAPI initialized";
 }
 
 TwitchHelixAPI::~TwitchHelixAPI()
@@ -41,7 +42,6 @@ TwitchHelixAPI::~TwitchHelixAPI()
 
 void TwitchHelixAPI::getTopGames(int limit)
 {
-    qDebug() << "Getting top games, limit:" << limit;
     
     // Clamp limit
     if (limit > 100) limit = 100;
@@ -53,12 +53,12 @@ void TwitchHelixAPI::getTopGames(int limit)
     QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
+    setupRequestTimeout(reply);
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onTopGamesReceived);
 }
 
 void TwitchHelixAPI::getStreamsForGame(const QString &gameId, int limit)
 {
-    qDebug() << "Getting streams for game:" << gameId << "limit:" << limit;
     
     // Clamp limit
     if (limit > 100) limit = 100;
@@ -68,6 +68,7 @@ void TwitchHelixAPI::getStreamsForGame(const QString &gameId, int limit)
     QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
+    setupRequestTimeout(reply);
     
     // Mark as non-pagination request
     reply->setProperty("withPagination", false);
@@ -77,7 +78,6 @@ void TwitchHelixAPI::getStreamsForGame(const QString &gameId, int limit)
 
 void TwitchHelixAPI::getStreamsForGameWithCursor(const QString &gameId, int limit, const QString &cursor)
 {
-    qDebug() << "Getting streams for game with cursor:" << gameId << "limit:" << limit << "cursor:" << cursor;
     
     // Clamp limit
     if (limit > 100) limit = 100;
@@ -93,6 +93,7 @@ void TwitchHelixAPI::getStreamsForGameWithCursor(const QString &gameId, int limi
     QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
+    setupRequestTimeout(reply);
     
     // Mark as pagination request
     reply->setProperty("withPagination", true);
@@ -102,12 +103,12 @@ void TwitchHelixAPI::getStreamsForGameWithCursor(const QString &gameId, int limi
 
 void TwitchHelixAPI::getStreamForUser(const QString &userLogin)
 {
-    qDebug() << "Getting stream for user:" << userLogin;
     
     QString endpoint = QString("/streams?user_login=%1").arg(userLogin);
     QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
+    setupRequestTimeout(reply);
     
     // Mark as non-pagination request
     reply->setProperty("withPagination", false);
@@ -117,22 +118,21 @@ void TwitchHelixAPI::getStreamForUser(const QString &userLogin)
 
 void TwitchHelixAPI::getUserInfo(const QString &userLogin)
 {
-    qDebug() << "Getting user info for:" << userLogin;
     
     QString endpoint = QString("/users?login=%1").arg(userLogin);
     QNetworkRequest request = createRequest(endpoint, m_authToken);
     
     QNetworkReply *reply = m_networkManager->get(request);
+    setupRequestTimeout(reply);
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onUserInfoReceived);
 }
 
 void TwitchHelixAPI::getFollowedStreams(const QString &userId, int limit)
 {
-    qDebug() << "Getting followed streams for user ID:" << userId << "limit:" << limit;
     
     // IMPORTANT: Requires OAuth token with user:read:follows scope
     if (m_authToken.isEmpty()) {
-        qWarning() << "Cannot get followed streams without OAuth token";
+        WARN_API("Cannot get followed streams without OAuth token");
         emit error("Authentication required to view followed streams");
         return;
     }
@@ -143,20 +143,26 @@ void TwitchHelixAPI::getFollowedStreams(const QString &userId, int limit)
     
     QString endpoint = QString("/streams/followed?user_id=%1&first=%2").arg(userId).arg(limit);
     QNetworkRequest request = createRequest(endpoint, m_authToken);
-    
+
     QNetworkReply *reply = m_networkManager->get(request);
+    setupRequestTimeout(reply);
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onFollowedStreamsReceived);
+}
+
+void TwitchHelixAPI::setNetworkManager(NetworkManager *networkManager)
+{
+    m_netStatusManager = networkManager;
 }
 
 void TwitchHelixAPI::validateAuthToken(const QString &authToken)
 {
-    qDebug() << "Validating auth token...";
     
     QUrl url("https://id.twitch.tv/oauth2/validate");
     QNetworkRequest request(url);
     request.setRawHeader("Authorization", QString("OAuth %1").arg(authToken).toUtf8());
     
     QNetworkReply *reply = m_networkManager->get(request);
+    setupRequestTimeout(reply);
     connect(reply, &QNetworkReply::finished, this, &TwitchHelixAPI::onAuthValidationReceived);
 }
 
@@ -186,8 +192,12 @@ void TwitchHelixAPI::onTopGamesReceived()
     
     QJsonObject obj = doc.object();
     QJsonArray games = obj["data"].toArray();
-    
-    qDebug() << "Received" << games.size() << "top games";
+
+    // Report successful network request
+    if (m_netStatusManager) {
+        m_netStatusManager->reportSuccess();
+    }
+
     emit topGamesReceived(games);
 }
 
@@ -213,9 +223,12 @@ void TwitchHelixAPI::onStreamsReceived()
     
     QJsonObject obj = doc.object();
     QJsonArray streams = obj["data"].toArray();
-    
-    qDebug() << "Received" << streams.size() << "streams";
-    
+
+    // Report successful network request
+    if (m_netStatusManager) {
+        m_netStatusManager->reportSuccess();
+    }
+
     // If single stream request, emit single stream
     if (streams.size() == 1) {
         emit streamReceived(streams[0].toObject());
@@ -253,10 +266,12 @@ void TwitchHelixAPI::onStreamsWithPaginationReceived()
         QJsonObject pagination = obj["pagination"].toObject();
         cursor = pagination["cursor"].toString();
     }
-    
-    qDebug() << "Received" << streams.size() << "streams with pagination";
-    qDebug() << "Next cursor:" << (cursor.isEmpty() ? "NONE (last page)" : cursor);
-    
+
+    // Report successful network request
+    if (m_netStatusManager) {
+        m_netStatusManager->reportSuccess();
+    }
+
     emit streamsPaginationReceived(streams, cursor);
 }
 
@@ -282,8 +297,12 @@ void TwitchHelixAPI::onFollowedStreamsReceived()
     
     QJsonObject obj = doc.object();
     QJsonArray streams = obj["data"].toArray();
-    
-    qDebug() << "Received" << streams.size() << "followed streams";
+
+    // Report successful network request
+    if (m_netStatusManager) {
+        m_netStatusManager->reportSuccess();
+    }
+
     emit followedStreamsReceived(streams);
 }
 
@@ -316,8 +335,12 @@ void TwitchHelixAPI::onUserInfoReceived()
     }
     
     QJsonObject user = users[0].toObject();
-    qDebug() << "Received user info for:" << user["login"].toString();
-    
+
+    // Report successful network request
+    if (m_netStatusManager) {
+        m_netStatusManager->reportSuccess();
+    }
+
     emit userInfoReceived(user);
 }
 
@@ -329,7 +352,7 @@ void TwitchHelixAPI::onAuthValidationReceived()
     reply->deleteLater();
     
     if (reply->error() != QNetworkReply::NoError) {
-        qWarning() << "Auth validation failed:" << reply->errorString();
+        WARN_API("Auth validation failed:" << reply->errorString());
         emit authTokenInvalid(reply->errorString());
         return;
     }
@@ -352,7 +375,12 @@ void TwitchHelixAPI::onAuthValidationReceived()
         return;
     }
     
-    qDebug() << "✅ Auth token valid for user:" << login;
+    // Report successful network request
+    if (m_netStatusManager) {
+        m_netStatusManager->reportSuccess();
+    }
+
+    LOG_API("Token valid for user:" << login);
     emit authTokenValid(userId, login, login); // displayName = login for now
 }
 
@@ -370,12 +398,10 @@ QNetworkRequest TwitchHelixAPI::createRequest(const QString &endpoint, const QSt
         // With OAuth: Use our custom Client-ID (token was generated with this)
         request.setRawHeader("Client-ID", Config::TWITCH_CLIENT_ID.toUtf8());
         request.setRawHeader("Authorization", QString("Bearer %1").arg(authToken).toUtf8());
-        qDebug() << "Helix API: Using custom Client-ID with OAuth token";
-    } else {
+        } else {
         // Without OAuth: Use public Client-ID for anonymous requests
         request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
-        qDebug() << "Helix API: Using public Client-ID (anonymous)";
-    }
+        }
     
     return request;
 }
@@ -384,15 +410,106 @@ void TwitchHelixAPI::handleNetworkError(QNetworkReply *reply)
 {
     int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     QString errorString = reply->errorString();
-    
-    qWarning() << "Network error:" << errorString;
-    qWarning() << "HTTP status code:" << statusCode;
-    
+
+
     // Read response body for more details
     QByteArray errorBody = reply->readAll();
     if (!errorBody.isEmpty()) {
-        qWarning() << "Error response:" << errorBody;
+        WARN_API("Error:" << errorBody);
     }
-    
+
+    // Classify and report error to NetworkManager
+    if (m_netStatusManager) {
+        NetworkManager::ErrorType errorType = m_netStatusManager->classifyError(reply);
+        }
+
     emit error(QString("Network error: %1 (HTTP %2)").arg(errorString).arg(statusCode));
+}
+// ========================================
+// REQUEST TIMEOUT MANAGEMENT
+// ========================================
+
+const int TwitchHelixAPI::REQUEST_TIMEOUT_MS;
+
+void TwitchHelixAPI::setupRequestTimeout(QNetworkReply *reply)
+{
+    if (!reply) return;
+
+    // Don't setup timeout twice for the same reply
+    if (m_timeoutTimers.contains(reply)) {
+        WARN_API("Timeout already set");
+        return;
+    }
+
+    // Create timeout timer
+    QTimer *timer = new QTimer(this);
+    timer->setSingleShot(true);
+    timer->setInterval(REQUEST_TIMEOUT_MS);
+
+    // Store the reply pointer in the timer
+    timer->setProperty("reply", QVariant::fromValue(reply));
+
+    // Connect timeout
+    connect(timer, &QTimer::timeout, this, &TwitchHelixAPI::onRequestTimeout);
+
+    // Cleanup timer when request finishes (use QueuedConnection to be safe)
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        cleanupRequest(reply);
+    }, Qt::QueuedConnection);
+
+    // Also cleanup when reply is destroyed
+    connect(reply, &QObject::destroyed, this, [this, reply]() {
+        if (m_timeoutTimers.contains(reply)) {
+            QTimer *timer = m_timeoutTimers.value(reply);
+            if (timer) {
+                timer->stop();
+                timer->deleteLater();
+            }
+            m_timeoutTimers.remove(reply);
+        }
+    });
+
+    // Start timer
+    m_timeoutTimers[reply] = timer;
+    timer->start();
+
+}
+
+void TwitchHelixAPI::onRequestTimeout()
+{
+    QTimer *timer = qobject_cast<QTimer*>(sender());
+    if (!timer) return;
+
+    // Get the reply from the timer property
+    QNetworkReply *reply = timer->property("reply").value<QNetworkReply*>();
+
+    if (reply && m_timeoutTimers.contains(reply)) {
+        WARN_API("Request timed out");
+
+        // Notify NetworkManager about the timeout (treated as network error)
+        if (m_netStatusManager) {
+            m_netStatusManager->reportError(NetworkManager::NetworkError);
+    
+        }
+
+        // Abort the request
+        reply->abort();
+
+        // Cleanup will happen in the finished() handler
+    }
+}
+
+void TwitchHelixAPI::cleanupRequest(QNetworkReply *reply)
+{
+    if (!reply) return;
+
+    // Stop and delete timer if it exists
+    if (m_timeoutTimers.contains(reply)) {
+        QTimer *timer = m_timeoutTimers.value(reply);
+        if (timer) {
+            timer->stop();
+            timer->deleteLater();
+        }
+        m_timeoutTimers.remove(reply);
+    }
 }

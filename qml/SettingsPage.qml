@@ -121,8 +121,7 @@ Page {
                             // Initialize with saved token
                             Component.onCompleted: {
                                 text = twitchFetcher.getGraphQLToken()
-                                console.log("Loaded GraphQL token, length:", text.length)
-                            }
+                                            }
                             
                             // React to token changes from C++
                             Connections {
@@ -132,8 +131,7 @@ Page {
                                     var savedToken = twitchFetcher.getGraphQLToken()
                                     if (gqlTokenInput.text !== savedToken) {
                                         gqlTokenInput.text = savedToken
-                                        console.log("Token updated from C++, new length:", savedToken.length)
-                                    }
+                                                                }
                                 }
                             }
                         }

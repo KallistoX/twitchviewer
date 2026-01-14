@@ -21,9 +21,10 @@ import QtQuick.Layouts 1.3
 
 Page {
     id: categoriesPage
-    
+    objectName: "categoriesPage"
+
     property bool isRefreshing: false
-    
+
     // Signal to request stream playback
     signal streamRequested(string channel, string quality)
     
@@ -236,8 +237,7 @@ Page {
                         MouseArea {
                             anchors.fill: parent
                             onClicked: {
-                                console.log("Category clicked:", model.name, "id:", model.id)
-                                stackView.push(streamsForCategoryPage, {
+                                                stackView.push(streamsForCategoryPage, {
                                     categoryId: model.id,
                                     categoryName: model.name
                                 })
@@ -251,28 +251,23 @@ Page {
     
     // Functions
     function refreshCategories() {
-        console.log("Refreshing categories...")
         isRefreshing = true
         
         if (authManager.isAuthenticated) {
             // Use Helix API (logged in, better performance)
-            console.log("Using Helix API (authenticated)")
             helixApi.getTopGames(20)
         } else {
             // Use GraphQL (anonymous, no auth required)
-            console.log("Using GraphQL (anonymous)")
             twitchFetcher.fetchTopCategoriesGraphQL(30)
         }
     }
     
     function watchStream(channelName) {
-        console.log("Requesting stream:", channelName)
         streamRequested(channelName, "best")
     }
     
     // Load categories on component completion
     Component.onCompleted: {
-        console.log("CategoriesPage loaded")
         refreshCategories()
     }
     
@@ -282,8 +277,7 @@ Page {
         ignoreUnknownSignals: true
         
         onTopGamesReceived: {
-            console.log("Top games received from Helix API:", games.length)
-            categoryModel.clear()
+                categoryModel.clear()
             
             for (var i = 0; i < games.length; i++) {
                 var game = games[i]
@@ -300,8 +294,7 @@ Page {
             }
             
             isRefreshing = false
-            console.log("Category model populated with", categoryModel.count, "items (Helix)")
-        }
+            }
     }
     
     // Connections - GraphQL (anonymous)
@@ -310,8 +303,7 @@ Page {
         ignoreUnknownSignals: true
         
         onTopCategoriesReceived: {
-            console.log("Top categories received from GraphQL:", categories.length)
-            categoryModel.clear()
+                categoryModel.clear()
             
             for (var i = 0; i < categories.length; i++) {
                 var cat = categories[i]
@@ -325,8 +317,7 @@ Page {
             }
             
             isRefreshing = false
-            console.log("Category model populated with", categoryModel.count, "items (GraphQL)")
-        }
+            }
     }
     
     // Error handling
@@ -335,8 +326,7 @@ Page {
         ignoreUnknownSignals: true
         
         onError: {
-            console.error("Helix API error:", message)
-            isRefreshing = false
+                isRefreshing = false
         }
     }
     
@@ -345,8 +335,7 @@ Page {
         ignoreUnknownSignals: true
         
         onError: {
-            console.error("GraphQL error:", message)
-            isRefreshing = false
+                isRefreshing = false
         }
     }
 }

@@ -15,14 +15,15 @@
  */
 
  #include "twitchstreamfetcher.h"
+#include "logging.h"
  #include "twitchauthmanager.h"
  #include "config.h"
  #include <QNetworkRequest>
  #include <QUrlQuery>
  #include <QUrl>
- #include <QDebug>
- #include <QStandardPaths>
+  #include <QStandardPaths>
  #include <QDir>
+ #include "networkmanager.h" 
  
  // Twitch API Constants
  const QString TwitchStreamFetcher::TWITCH_GQL_URL = "https://gql.twitch.tv/gql";
@@ -34,6 +35,7 @@
  
  TwitchStreamFetcher::TwitchStreamFetcher(QObject *parent)
      : QObject(parent)
+     , m_netStatusManager(nullptr)
      , m_networkManager(new QNetworkAccessManager(this))
      , m_authManager(nullptr)
      , m_isValidatingToken(false)
@@ -54,10 +56,7 @@
      QString settingsFile = dataPath + "/twitchviewer.conf";
      m_settings = new QSettings(settingsFile, QSettings::NativeFormat, this);
      
-     qDebug() << "=== TwitchStreamFetcher Settings ===";
-     qDebug() << "Settings file:" << m_settings->fileName();
-     qDebug() << "AppDataLocation:" << dataPath;
-     
+        
      // Load cached tokens
      loadClientIntegrity();
      loadGraphQLToken();
@@ -66,8 +65,7 @@
      // Let Main.qml decide when to fetch
         if (!m_graphQLToken.isEmpty()) {
             emit graphQLTokenChanged();
-         qDebug() << "GraphQL token loaded, waiting for explicit fetch request";
-    }
+     }
  }
  
  TwitchStreamFetcher::~TwitchStreamFetcher()
@@ -77,8 +75,7 @@
  void TwitchStreamFetcher::setAuthManager(TwitchAuthManager *authManager)
  {
      m_authManager = authManager;
-     qDebug() << "TwitchStreamFetcher: Auth manager set";
- }
+  }
  
  // ========================================
  // GraphQL Token Management
@@ -89,16 +86,19 @@
      QString trimmed = token.trimmed();
      
      if (trimmed.isEmpty()) {
-         qWarning() << "Cannot set empty GraphQL token";
-         return;
+              return;
      }
      
      m_graphQLToken = trimmed;
      saveGraphQLToken();
      
-     qDebug() << "✅ GraphQL token set (length:" << m_graphQLToken.length() << ")";
      emit graphQLTokenChanged();
  }
+ 
+void TwitchStreamFetcher::setNetworkManager(NetworkManager *networkManager)
+{
+    m_netStatusManager = networkManager;
+}
  
 void TwitchStreamFetcher::clearGraphQLToken()
 {
@@ -121,7 +121,6 @@ void TwitchStreamFetcher::clearGraphQLToken()
     m_debugTurbo = "N/A";
     m_debugAdblock = "N/A";
     
-    qDebug() << "GraphQL token and user info cleared";
     emit graphQLTokenChanged();
     emit currentUserChanged();
     emit debugInfoChanged();
@@ -139,32 +138,21 @@ void TwitchStreamFetcher::clearGraphQLToken()
  
  void TwitchStreamFetcher::loadGraphQLToken()
  {
-     qDebug() << "=== Loading GraphQL token ===";
-     qDebug() << "Settings file:" << m_settings->fileName();
-     qDebug() << "All keys:" << m_settings->allKeys();
-     
+        
      m_graphQLToken = m_settings->value("auth/graphql_token").toString();
      
      if (!m_graphQLToken.isEmpty()) {
-         qDebug() << "✅ Loaded GraphQL token (length:" << m_graphQLToken.length() << ")";
-     } else {
-         qDebug() << "❌ No GraphQL token in settings";
-     }
+      } else {
+      }
  }
  
  void TwitchStreamFetcher::saveGraphQLToken()
  {
-     qDebug() << "=== Saving GraphQL token ===";
-     qDebug() << "Settings file:" << m_settings->fileName();
-     qDebug() << "Token length:" << m_graphQLToken.length();
-     
+      
      m_settings->setValue("auth/graphql_token", m_graphQLToken);
      m_settings->sync();
      
-     qDebug() << "Sync status:" << m_settings->status();
-     qDebug() << "All keys after save:" << m_settings->allKeys();
-     qDebug() << "✅ GraphQL token saved";
- }
+    }
  
  // ========================================
  // Stream Fetching
@@ -172,8 +160,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
  
  void TwitchStreamFetcher::fetchStreamUrl(const QString &channelName, const QString &quality)
  {
-     qDebug() << "Fetching stream URL for channel:" << channelName << "quality:" << quality;
-     
+      
      m_currentChannel = channelName;
      m_requestedQuality = quality;
      m_isValidatingToken = false;
@@ -197,20 +184,16 @@ void TwitchStreamFetcher::clearGraphQLToken()
      if (!m_graphQLToken.isEmpty()) {
          // Use GraphQL auth-token
          request.setRawHeader("Authorization", QString("OAuth %1").arg(m_graphQLToken).toUtf8());
-         qDebug() << "✅ Using GraphQL auth-token";
-     } else if (m_authManager && m_authManager->isAuthenticated()) {
+      } else if (m_authManager && m_authManager->isAuthenticated()) {
          // Fallback to OAuth token (probably won't work for ad-free, but try anyway)
          request.setRawHeader("Authorization", QString("OAuth %1").arg(m_authManager->accessToken()).toUtf8());
-         qDebug() << "⚠️  Using OAuth token (may not provide ad-free streams)";
-     } else {
-         qDebug() << "Using anonymous request (will have ads)";
-     }
+      } else {
+      }
      
      // Add Client-Integrity token if available and requested
      if (withIntegrity && !m_clientIntegrityToken.isEmpty()) {
          request.setRawHeader("Client-Integrity", m_clientIntegrityToken.toUtf8());
-         qDebug() << "✅ Using Client-Integrity token";
-     }
+      }
      
      // Add X-Device-ID if we have one
      if (!m_deviceId.isEmpty()) {
@@ -240,12 +223,9 @@ void TwitchStreamFetcher::clearGraphQLToken()
      QJsonDocument doc(payload);
      QByteArray data = doc.toJson(QJsonDocument::Compact);
      
-     qDebug() << "Sending GraphQL request...";
-     qDebug() << "  With Integrity:" << withIntegrity;
-     qDebug() << "  Has GraphQL Token:" << !m_graphQLToken.isEmpty();
-     qDebug() << "  Is Validation:" << m_isValidatingToken;
-     
+        
      QNetworkReply *reply = m_networkManager->post(request, data);
+    setupRequestTimeout(reply);
      
      if (m_isValidatingToken) {
          connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onTokenValidationReceived);
@@ -267,9 +247,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
      // Check for network errors
      if (reply->error() != QNetworkReply::NoError) {
          int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-         qWarning() << "Token validation failed:" << reply->errorString();
-         qWarning() << "HTTP status code:" << statusCode;
-         
+           
          if (statusCode == 401 || statusCode == 403) {
              emit tokenValidationFailed("Token is invalid or expired (HTTP " + QString::number(statusCode) + ")");
          } else {
@@ -293,7 +271,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
          QJsonArray errors = root["errors"].toArray();
          if (!errors.isEmpty()) {
              QString errorMsg = errors[0].toObject()["message"].toString();
-             qWarning() << "Twitch API error:" << errorMsg;
+             WARN_STREAM("API error:" << errorMsg);
              emit tokenValidationFailed("Twitch error: " + errorMsg);
              return;
          }
@@ -330,8 +308,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
          message += "\n⚠️  Ads may still appear (Turbo/Sub required)";
      }
      
-     qDebug() << "✅ Token validation successful";
-     emit tokenValidationSuccess(message);
+      emit tokenValidationSuccess(message);
  }
  
  void TwitchStreamFetcher::onPlaybackTokenReceived()
@@ -343,14 +320,33 @@ void TwitchStreamFetcher::clearGraphQLToken()
      
      // Check for network errors
      if (reply->error() != QNetworkReply::NoError) {
+        if (m_netStatusManager) {
+            NetworkManager::ErrorType errorType = m_netStatusManager->classifyError(reply);
+            QString errorMsg = m_netStatusManager->getErrorMessage(reply);
+            
+            if (errorType == NetworkManager::NetworkError) {
+                m_netStatusManager->reportError(errorType);
+                            emit error(errorMsg);
+                return;
+            }
+            
+            if (errorType == NetworkManager::ServerError) {
+                            emit error(errorMsg);
+                return;
+            }
+            
+            // For auth errors or other errors, continue with existing logic
+            WARN_STREAM("API error:" << errorMsg);
+            emit error(errorMsg);
+            return;
+        }
          int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-         qWarning() << "Network error:" << reply->errorString();
-         qWarning() << "HTTP status code:" << statusCode;
-         
+         WARN_STREAM("Network error:" << reply->errorString());
+          
          // Read response body for more details
          QByteArray errorBody = reply->readAll();
          if (!errorBody.isEmpty()) {
-             qWarning() << "Error response body:" << errorBody;
+     
          }
          
          // If 401/403 and we don't have client-integrity yet, try getting it
@@ -358,7 +354,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
              m_clientIntegrityToken.isEmpty() &&
              !m_graphQLToken.isEmpty()) {
              
-             qDebug() << "❌ Authentication failed, trying to get Client-Integrity token...";
+             LOG_STREAM("Auth failed - getting integrity token");
              emit statusUpdate("Getting integrity token...");
              requestClientIntegrity();
              return;
@@ -369,8 +365,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
      }
      
      QByteArray responseData = reply->readAll();
-     qDebug() << "GraphQL response received, size:" << responseData.size();
-     
+      
      QJsonDocument doc = QJsonDocument::fromJson(responseData);
      if (doc.isNull() || !doc.isObject()) {
          emit error("Invalid JSON response from Twitch");
@@ -384,15 +379,14 @@ void TwitchStreamFetcher::clearGraphQLToken()
          QJsonArray errors = root["errors"].toArray();
          if (!errors.isEmpty()) {
              QString errorMsg = errors[0].toObject()["message"].toString();
-             qWarning() << "Twitch API error:" << errorMsg;
+             WARN_STREAM("API error:" << errorMsg);
              
              // Check if it's an integrity error
              if (errorMsg.contains("integrity", Qt::CaseInsensitive) && 
                  m_clientIntegrityToken.isEmpty() &&
                  !m_graphQLToken.isEmpty()) {
                  
-                 qDebug() << "❌ Integrity required, fetching token...";
-                 emit statusUpdate("Getting integrity token...");
+                              emit statusUpdate("Getting integrity token...");
                  requestClientIntegrity();
                  return;
              }
@@ -422,8 +416,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
      // Parse debug info from token
      parseDebugInfo(token);
      
-     qDebug() << "✅ Got token and signature, fetching playlist...";
-     emit statusUpdate("Getting stream playlist...");
+      emit statusUpdate("Getting stream playlist...");
      
      requestPlaylist(token, signature, m_currentChannel);
  }
@@ -431,11 +424,10 @@ void TwitchStreamFetcher::clearGraphQLToken()
  
  void TwitchStreamFetcher::requestClientIntegrity()
  {
-     qDebug() << "Requesting Client-Integrity token from /integrity endpoint...";
-     
+      
      // Make sure we have GraphQL token
      if (m_graphQLToken.isEmpty()) {
-         qWarning() << "Cannot get client-integrity without GraphQL token";
+         WARN_STREAM("Cannot get integrity token without GraphQL token");
          emit error("GraphQL token required for this stream");
          return;
      }
@@ -455,12 +447,12 @@ void TwitchStreamFetcher::clearGraphQLToken()
      request.setRawHeader("User-Agent", 
          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
      
-     qDebug() << "Device-ID:" << deviceId;
-     
+      
      // Empty POST body
      QByteArray emptyBody;
      
      QNetworkReply *reply = m_networkManager->post(request, emptyBody);
+    setupRequestTimeout(reply);
      connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onClientIntegrityReceived);
  }
  
@@ -472,18 +464,37 @@ void TwitchStreamFetcher::clearGraphQLToken()
      reply->deleteLater();
      
      if (reply->error() != QNetworkReply::NoError) {
-         qWarning() << "Failed to get client-integrity token:" << reply->errorString();
+        if (m_netStatusManager) {
+            NetworkManager::ErrorType errorType = m_netStatusManager->classifyError(reply);
+            QString errorMsg = m_netStatusManager->getErrorMessage(reply);
+            
+            if (errorType == NetworkManager::NetworkError) {
+                m_netStatusManager->reportError(errorType);
+                            emit error(errorMsg);
+                return;
+            }
+            
+            if (errorType == NetworkManager::ServerError) {
+                            emit error(errorMsg);
+                return;
+            }
+            
+            // For auth errors or other errors, continue with existing logic
+            WARN_STREAM("API error:" << errorMsg);
+            emit error(errorMsg);
+            return;
+        }
+         WARN_STREAM("Failed to get integrity token:" << reply->errorString());
          QByteArray errorBody = reply->readAll();
          if (!errorBody.isEmpty()) {
-             qWarning() << "Error response:" << errorBody;
+     
          }
          emit error("Failed to get integrity token: " + reply->errorString());
          return;
      }
      
      QByteArray responseData = reply->readAll();
-     qDebug() << "Client-Integrity response received, size:" << responseData.size();
-     
+      
      QJsonDocument doc = QJsonDocument::fromJson(responseData);
      if (doc.isNull() || !doc.isObject()) {
          emit error("Invalid client-integrity response");
@@ -498,21 +509,17 @@ void TwitchStreamFetcher::clearGraphQLToken()
      if (obj.contains("expires_in")) {
          int expiresIn = obj["expires_in"].toInt();
          m_clientIntegrityExpiration = QDateTime::currentDateTime().addSecs(expiresIn);
-         qDebug() << "Token expires in" << expiresIn << "seconds";
-     } else {
+      } else {
          // Default: 16 hours
          m_clientIntegrityExpiration = QDateTime::currentDateTime().addSecs(16 * 3600);
-         qDebug() << "No expires_in, using default 16h";
-     }
+      }
      
      if (m_clientIntegrityToken.isEmpty()) {
          emit error("Failed to get integrity token from response");
          return;
      }
      
-     qDebug() << "✅ Got Client-Integrity token!";
-     qDebug() << "Token starts with:" << m_clientIntegrityToken.left(20) << "...";
-     qDebug() << "Expires at:" << m_clientIntegrityExpiration;
+       qDebug() << "Expires at:" << m_clientIntegrityExpiration;
      
      // Save to cache
      saveClientIntegrity();
@@ -524,21 +531,17 @@ void TwitchStreamFetcher::clearGraphQLToken()
  
 void TwitchStreamFetcher::parseDebugInfo(const QString &tokenValue)
 {
-    qDebug() << "=== Parsing Token Value ===";
-    qDebug() << "Raw token value:" << tokenValue;
     qDebug() << "===========================";
     
     // Token value is a JSON string, parse it
     QJsonDocument doc = QJsonDocument::fromJson(tokenValue.toUtf8());
     if (doc.isNull() || !doc.isObject()) {
-        qDebug() << "Could not parse token for debug info";
         return;
     }
     
     QJsonObject obj = doc.object();
     
     // Log all fields for debugging
-    qDebug() << "=== All Token Fields ===";
     for (const QString &key : obj.keys()) {
         QJsonValue value = obj[key];
         if (value.isBool()) {
@@ -548,8 +551,7 @@ void TwitchStreamFetcher::parseDebugInfo(const QString &tokenValue)
         } else if (value.isDouble()) {
             qDebug() << key << ":" << value.toDouble();
         } else {
-            qDebug() << key << ":" << value;
-        }
+            }
     }
     qDebug() << "========================";
     
@@ -562,7 +564,6 @@ void TwitchStreamFetcher::parseDebugInfo(const QString &tokenValue)
     m_debugTurbo = obj.contains("turbo") ? (obj["turbo"].toBool() ? "true" : "false") : "N/A";
     m_debugAdblock = obj.contains("adblock") ? (obj["adblock"].toBool() ? "true" : "false") : "N/A";
     
-    qDebug() << "=== Extracted Debug Info ===";
     qDebug() << "Show Ads:" << m_debugShowAds;
     qDebug() << "Hide Ads:" << m_debugHideAds;
     qDebug() << "Privileged:" << m_debugPrivileged;
@@ -594,10 +595,10 @@ void TwitchStreamFetcher::parseDebugInfo(const QString &tokenValue)
      QUrl url(usherUrl);
      url.setQuery(query);
      
-     qDebug() << "Requesting playlist from:" << usherUrl;
-     
+      
      QNetworkRequest request(url);
      QNetworkReply *reply = m_networkManager->get(request);
+    setupRequestTimeout(reply);
      connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onPlaylistReceived);
  }
  
@@ -609,14 +610,13 @@ void TwitchStreamFetcher::parseDebugInfo(const QString &tokenValue)
      reply->deleteLater();
      
      if (reply->error() != QNetworkReply::NoError) {
-         qWarning() << "Network error getting playlist:" << reply->errorString();
+         WARN_STREAM("Network error getting playlist:" << reply->errorString());
          emit error("Failed to get playlist: " + reply->errorString());
          return;
      }
      
      QString m3u8Content = QString::fromUtf8(reply->readAll());
-     qDebug() << "Playlist received, size:" << m3u8Content.size();
-     
+      
      if (m3u8Content.isEmpty() || !m3u8Content.contains("#EXTM3U")) {
          emit error("Invalid playlist received");
          return;
@@ -630,8 +630,7 @@ void TwitchStreamFetcher::parseDebugInfo(const QString &tokenValue)
          return;
      }
 
-     qDebug() << "Stream URL ready:" << streamUrl.left(80) << "...";
-    emit statusUpdate("Stream ready!");
+     emit statusUpdate("Stream ready!");
     emit streamUrlReady(streamUrl, m_currentChannel);
  }
 
@@ -681,8 +680,7 @@ QString TwitchStreamFetcher::parseM3U8Playlist(const QString &m3u8Content, const
     
     // Emit signal that qualities are available
     if (!m_availableQualities.isEmpty()) {
-        qDebug() << "✅ Cached" << m_availableQualities.size() << "quality options";
-        emit availableQualitiesChanged(m_availableQualities);
+            emit availableQualitiesChanged(m_availableQualities);
     }
     
     // Quality mapping for "best", "source", etc.
@@ -696,7 +694,6 @@ QString TwitchStreamFetcher::parseM3U8Playlist(const QString &m3u8Content, const
     
     QString targetResolution = qualityMap.value(quality.toLower(), "1080p");
     
-    qDebug() << "Looking for quality:" << quality << "-> resolution:" << targetResolution;
     
     // Try to find exact match
     for (const QString &qualName : m_availableQualities) {
@@ -707,7 +704,6 @@ QString TwitchStreamFetcher::parseM3U8Playlist(const QString &m3u8Content, const
     
     // If not found, return the first (best) quality
     if (!m_availableQualities.isEmpty()) {
-        qDebug() << "Using first available quality:" << m_availableQualities.first();
         return m_qualityUrls[m_availableQualities.first()];
     }
     
@@ -751,8 +747,7 @@ QString TwitchStreamFetcher::getQualityUrl(const QString &quality) const
                  if (i + 1 < lines.size()) {
                      QString nextLine = lines[i + 1].trimmed();
                      if (nextLine.startsWith("http")) {
-                         qDebug() << "Found matching quality:" << resolution;
-                         return nextLine;
+                                      return nextLine;
                      }
                  }
              }
@@ -768,7 +763,6 @@ QString TwitchStreamFetcher::getQualityUrl(const QString &quality) const
 
 void TwitchStreamFetcher::fetchTopCategoriesGraphQL(int limit)
 {
-    qDebug() << "Fetching top categories via GraphQL (anonymous), limit:" << limit;
     
     // Clamp limit
     if (limit > 100) limit = 100;
@@ -785,7 +779,6 @@ void TwitchStreamFetcher::requestTopCategories(int limit)
     
     // CRITICAL: Use public Client-ID, NO auth token (anonymous)
     request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
-    qDebug() << "GraphQL Categories: Using public Client-ID, NO auth token";
     
     // Build GraphQL query for BrowsePage_AllDirectories
     QJsonObject options;
@@ -817,9 +810,9 @@ void TwitchStreamFetcher::requestTopCategories(int limit)
     QJsonDocument doc(payload);
     QByteArray data = doc.toJson(QJsonDocument::Compact);
     
-    qDebug() << "Sending BrowsePage_AllDirectories query...";
     
     QNetworkReply *reply = m_networkManager->post(request, data);
+    setupRequestTimeout(reply);
     connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onTopCategoriesReceived);
 }
 
@@ -831,17 +824,36 @@ void TwitchStreamFetcher::onTopCategoriesReceived()
     reply->deleteLater();
     
     if (reply->error() != QNetworkReply::NoError) {
-        qWarning() << "Failed to fetch categories:" << reply->errorString();
+        if (m_netStatusManager) {
+            NetworkManager::ErrorType errorType = m_netStatusManager->classifyError(reply);
+            QString errorMsg = m_netStatusManager->getErrorMessage(reply);
+            
+            if (errorType == NetworkManager::NetworkError) {
+                m_netStatusManager->reportError(errorType);
+                            emit error(errorMsg);
+                return;
+            }
+            
+            if (errorType == NetworkManager::ServerError) {
+                            emit error(errorMsg);
+                return;
+            }
+            
+            // For auth errors or other errors, continue with existing logic
+            WARN_STREAM("API error:" << errorMsg);
+            emit error(errorMsg);
+            return;
+        }
+        WARN_STREAM("Failed to fetch categories:" << reply->errorString());
         QByteArray errorBody = reply->readAll();
         if (!errorBody.isEmpty()) {
-            qWarning() << "Error response:" << errorBody;
+    
         }
         emit error("Failed to load categories: " + reply->errorString());
         return;
     }
     
     QByteArray responseData = reply->readAll();
-    qDebug() << "Categories GraphQL response received, size:" << responseData.size();
     
     QJsonDocument doc = QJsonDocument::fromJson(responseData);
     
@@ -857,7 +869,7 @@ void TwitchStreamFetcher::onTopCategoriesReceived()
         QJsonArray errors = root["errors"].toArray();
         if (!errors.isEmpty()) {
             QString errorMsg = errors[0].toObject()["message"].toString();
-            qWarning() << "GraphQL error:" << errorMsg;
+            WARN_STREAM("GraphQL error:" << errorMsg);
             emit error("Categories error: " + errorMsg);
             return;
         }
@@ -869,7 +881,6 @@ void TwitchStreamFetcher::onTopCategoriesReceived()
     QJsonArray edges = directoriesWithTags["edges"].toArray();
     
     if (edges.isEmpty()) {
-        qDebug() << "No categories found";
         emit topCategoriesReceived(QJsonArray());
         return;
     }
@@ -903,7 +914,6 @@ void TwitchStreamFetcher::onTopCategoriesReceived()
         }
     }
     
-    qDebug() << "✅ Received" << categories.size() << "categories from GraphQL";
     emit topCategoriesReceived(categories);
 }
 
@@ -917,11 +927,10 @@ void TwitchStreamFetcher::fetchCurrentUser()
     // For actual user info, use Helix API via TwitchHelixAPI class
     
     if (m_graphQLToken.isEmpty()) {
-        qWarning() << "Cannot fetch user info without GraphQL token";
+        WARN_STREAM("Cannot fetch user info without token");
         return;
     }
     
-    qDebug() << "Fetching current user info via GraphQL (ID only)...";
     requestUserInfo();
 }
 
@@ -951,9 +960,9 @@ void TwitchStreamFetcher::requestUserInfo()
     QJsonDocument doc(payload);
     QByteArray data = doc.toJson(QJsonDocument::Compact);
     
-    qDebug() << "Sending UserMenuCurrentUser query (GraphQL - ID only)...";
     
     QNetworkReply *reply = m_networkManager->post(request, data);
+    setupRequestTimeout(reply);
     
     // Store that this is first step
     reply->setProperty("isFirstStep", true);
@@ -975,14 +984,12 @@ void TwitchStreamFetcher::requestUserDetails(const QString &userId)
         // OAuth token -> use our custom Client-ID
         token = m_authManager->accessToken();
         clientId = Config::TWITCH_CLIENT_ID;
-        qDebug() << "Using OAuth token + custom Client-ID for user info";
-    } else if (!m_graphQLToken.isEmpty()) {
+        } else if (!m_graphQLToken.isEmpty()) {
         // GraphQL token -> use public Client-ID
         token = m_graphQLToken;
         clientId = Config::TWITCH_PUBLIC_CLIENT_ID;
-        qDebug() << "Using GraphQL token + public Client-ID for user info";
-    } else {
-        qWarning() << "No token available for user info request";
+        } else {
+        WARN_STREAM("No token for user info");
         if (m_isValidatingToken) {
             m_isValidatingToken = false;
             emit validatingTokenChanged();
@@ -994,9 +1001,9 @@ void TwitchStreamFetcher::requestUserDetails(const QString &userId)
     request.setRawHeader("Client-ID", clientId.toUtf8());
     request.setRawHeader("Authorization", QString("Bearer %1").arg(token).toUtf8());
     
-    qDebug() << "Fetching user details via Helix API (step 2) for user ID:" << userId;
     
     QNetworkReply *reply = m_networkManager->get(request);
+    setupRequestTimeout(reply);
     
     // Mark as second step
     reply->setProperty("isFirstStep", false);
@@ -1014,6 +1021,26 @@ void TwitchStreamFetcher::onUserInfoReceived()
     reply->deleteLater();
     
     if (reply->error() != QNetworkReply::NoError) {
+        if (m_netStatusManager) {
+            NetworkManager::ErrorType errorType = m_netStatusManager->classifyError(reply);
+            QString errorMsg = m_netStatusManager->getErrorMessage(reply);
+            
+            if (errorType == NetworkManager::NetworkError) {
+                m_netStatusManager->reportError(errorType);
+                            emit error(errorMsg);
+                return;
+            }
+            
+            if (errorType == NetworkManager::ServerError) {
+                            emit error(errorMsg);
+                return;
+            }
+            
+            // For auth errors or other errors, continue with existing logic
+            WARN_STREAM("API error:" << errorMsg);
+            emit error(errorMsg);
+            return;
+        }
         qWarning() << "Failed to fetch user info (step" << (isFirstStep ? "1" : "2") << "):" << reply->errorString();
         
         // CRITICAL FIX: Even if step 2 fails, emit currentUserChanged if we have profile image from step 1
@@ -1032,7 +1059,6 @@ void TwitchStreamFetcher::onUserInfoReceived()
     
     QByteArray responseData = reply->readAll();
     qDebug() << "=== User Info Response (step" << (isFirstStep ? "1" : "2") << ") ===";
-    qDebug() << responseData;
     qDebug() << "====================================";
     
     QJsonDocument doc = QJsonDocument::fromJson(responseData);
@@ -1053,7 +1079,7 @@ void TwitchStreamFetcher::onUserInfoReceived()
         QJsonArray errors = root["errors"].toArray();
         if (!errors.isEmpty()) {
             QString errorMsg = errors[0].toObject()["message"].toString();
-            qWarning() << "Twitch API error:" << errorMsg;
+            WARN_STREAM("API error:" << errorMsg);
             
             if (m_isValidatingToken) {
                 m_isValidatingToken = false;
@@ -1080,7 +1106,6 @@ void TwitchStreamFetcher::onUserInfoReceived()
         }
         
         QString userId = currentUser["id"].toString();
-        qDebug() << "✅ Got user ID:" << userId << "- fetching details...";
         
         // Store ID temporarily
         m_currentUserId = userId;
@@ -1102,12 +1127,11 @@ void TwitchStreamFetcher::onUserInfoReceived()
         QJsonArray users = root["data"].toArray();
         
         if (users.isEmpty()) {
-            qWarning() << "User details not found in step 2 response";
+            WARN_STREAM("User details not found");
             
             // CRITICAL FIX: Still emit if we have profile image from step 1
             if (!m_currentUserProfileImage.isEmpty()) {
-                qDebug() << "But we have profile image from step 1, emitting currentUserChanged";
-                emit currentUserChanged();
+                        emit currentUserChanged();
             }
             
             if (m_isValidatingToken) {
@@ -1130,12 +1154,16 @@ void TwitchStreamFetcher::onUserInfoReceived()
             m_currentUserProfileImage = user["profile_image_url"].toString();
         }
         
-        qDebug() << "✅ User details received from Helix API:";
-        qDebug() << "  ID:" << m_currentUserId;
+            qDebug() << "  ID:" << m_currentUserId;
         qDebug() << "  Login:" << m_currentUserLogin;
         qDebug() << "  Display Name:" << m_currentUserDisplayName;
         qDebug() << "  Profile Image:" << m_currentUserProfileImage;
-        
+
+        // Report successful network request
+        if (m_netStatusManager) {
+            m_netStatusManager->reportSuccess();
+        }
+
         emit currentUserChanged();
         
         if (m_isValidatingToken) {
@@ -1165,13 +1193,11 @@ void TwitchStreamFetcher::onUserInfoReceived()
      m_deviceId = m_settings->value("integrity/device_id").toString();
      
      if (!m_clientIntegrityToken.isEmpty()) {
-         qDebug() << "Loaded cached Client-Integrity token";
-         qDebug() << "Expires at:" << m_clientIntegrityExpiration;
+          qDebug() << "Expires at:" << m_clientIntegrityExpiration;
          
          // Check if expired
          if (!isClientIntegrityValid()) {
-             qDebug() << "Cached token expired, will request new one";
-             m_clientIntegrityToken.clear();
+                  m_clientIntegrityToken.clear();
          }
      }
  }
@@ -1183,8 +1209,7 @@ void TwitchStreamFetcher::onUserInfoReceived()
      m_settings->setValue("integrity/device_id", m_deviceId);
      m_settings->sync();
      
-     qDebug() << "Saved Client-Integrity token to cache";
- }
+  }
  
  bool TwitchStreamFetcher::isClientIntegrityValid() const
  {
@@ -1206,8 +1231,95 @@ void TwitchStreamFetcher::onUserInfoReceived()
      if (m_deviceId.isEmpty()) {
          // Generate new UUID
          m_deviceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-         qDebug() << "Generated new Device-ID:" << m_deviceId;
-     }
+      }
      
      return m_deviceId;
  }
+
+// ========================================
+// REQUEST TIMEOUT MANAGEMENT
+// ========================================
+
+const int TwitchStreamFetcher::REQUEST_TIMEOUT_MS;
+
+void TwitchStreamFetcher::setupRequestTimeout(QNetworkReply *reply)
+{
+    if (!reply) return;
+
+    // Don't setup timeout twice for the same reply
+    if (m_timeoutTimers.contains(reply)) {
+        return;
+    }
+
+    // Create timeout timer
+    QTimer *timer = new QTimer(this);
+    timer->setSingleShot(true);
+    timer->setInterval(REQUEST_TIMEOUT_MS);
+
+    // Store the reply pointer in the timer
+    timer->setProperty("reply", QVariant::fromValue(reply));
+
+    // Connect timeout
+    connect(timer, &QTimer::timeout, this, &TwitchStreamFetcher::onRequestTimeout);
+
+    // Cleanup timer when request finishes (use QueuedConnection to be safe)
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        cleanupRequest(reply);
+    }, Qt::QueuedConnection);
+
+    // Also cleanup when reply is destroyed
+    connect(reply, &QObject::destroyed, this, [this, reply]() {
+        if (m_timeoutTimers.contains(reply)) {
+            QTimer *timer = m_timeoutTimers.value(reply);
+            if (timer) {
+                timer->stop();
+                timer->deleteLater();
+            }
+            m_timeoutTimers.remove(reply);
+        }
+    });
+
+    // Start timer
+    m_timeoutTimers[reply] = timer;
+    timer->start();
+
+}
+
+void TwitchStreamFetcher::onRequestTimeout()
+{
+    QTimer *timer = qobject_cast<QTimer*>(sender());
+    if (!timer) return;
+
+    // Get the reply from the timer property
+    QNetworkReply *reply = timer->property("reply").value<QNetworkReply*>();
+
+    if (reply && m_timeoutTimers.contains(reply)) {
+        WARN_STREAM("Request timed out");
+
+        // Notify NetworkManager about the timeout (treated as network error)
+        if (m_netStatusManager) {
+            m_netStatusManager->reportError(NetworkManager::NetworkError);
+    
+        }
+
+        // Abort the request
+        reply->abort();
+
+        // Cleanup will happen in the finished() handler
+    }
+}
+
+void TwitchStreamFetcher::cleanupRequest(QNetworkReply *reply)
+{
+    if (!reply) return;
+
+    // Stop and delete timer if it exists
+    if (m_timeoutTimers.contains(reply)) {
+        QTimer *timer = m_timeoutTimers.value(reply);
+        if (timer) {
+            timer->stop();
+            timer->deleteLater();
+        }
+        m_timeoutTimers.remove(reply);
+    }
+}
