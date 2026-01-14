@@ -276,7 +276,7 @@ Item {
         // ========================================
         // GESTURE LAYER (Pinch, Tap, Swipe)
         // ========================================
-        
+
         Item {
             id: gestureLayer
             anchors.fill: parent
@@ -288,15 +288,35 @@ Item {
             property bool isDragging: false
             property real swipeStartY: 0
             property point dragStartPos
-            
-            
+
+
             // Tap to toggle controls - FULLSCREEN ONLY
+            // FIXED: Close quality popup when tapping outside, but not when tapping inside
             TapHandler {
                 id: tapHandler
                 enabled: !isMiniMode && !gestureLayer.isSwiping
-                
-                onTapped: {
-                        if (controlsOverlay.opacity > 0) {
+
+                onTapped: function(eventPoint) {
+                    // Check if tap is inside quality popup
+                    if (qualityPopup.visible) {
+                        var popupGlobal = qualityPopup.mapToItem(playerPage, 0, 0)
+                        var tapX = eventPoint.position.x
+                        var tapY = eventPoint.position.y
+
+                        var insidePopup = (tapX >= popupGlobal.x &&
+                                          tapX <= popupGlobal.x + qualityPopup.width &&
+                                          tapY >= popupGlobal.y &&
+                                          tapY <= popupGlobal.y + qualityPopup.height)
+
+                        if (!insidePopup) {
+                            qualityPopup.visible = false
+                            showControlsTemporarily()
+                        }
+                        return
+                    }
+
+                    // Normal tap behavior
+                    if (controlsOverlay.opacity > 0) {
                         hideControls()
                     } else {
                         showControlsTemporarily()
@@ -305,9 +325,10 @@ Item {
             }
             
             // Swipe up to close, swipe down to minimize - FULLSCREEN
+            // FIXED: Disable when quality popup is open to allow scrolling
             DragHandler {
                 id: swipeHandler
-                enabled: !isMiniMode && !gestureLayer.isDragging
+                enabled: !isMiniMode && !gestureLayer.isDragging && !qualityPopup.visible
                 target: null  // Don't use target, manage Y manually
                 yAxis.enabled: true
                 xAxis.enabled: false
@@ -323,7 +344,7 @@ Item {
                         gestureLayer.isSwiping = false
 
                         var deltaY = playerContainer.y - startY
-        
+
                         // Swipe DOWN = positive deltaY
                         if (deltaY > units.gu(15)) {
                                     minimizeToCorner()
@@ -556,12 +577,19 @@ Item {
                     anchors.fill: parent
                     onClicked: {
                         qualityPopup.visible = !qualityPopup.visible
-                        showControlsTemporarily()
+                        if (qualityPopup.visible) {
+                            // Stop auto-hide timer when opening popup
+                            hideControlsTimer.stop()
+                            showControls()
+                        } else {
+                            // Restart auto-hide when closing popup
+                            showControlsTemporarily()
+                        }
                     }
                 }
             }
             
-            // Quality popup
+            // Quality popup - FIXED: Ensure it's on top and interactive
             Rectangle {
                 id: qualityPopup
                 anchors {
@@ -576,33 +604,36 @@ Item {
                 border.color: ThemeManager.borderColor
                 border.width: units.dp(1)
                 visible: false
-                
+                z: 200  // Above controlsOverlay and gestureLayer
+
                 Column {
                     anchors {
                         fill: parent
                         margins: units.gu(1)
                     }
                     spacing: units.gu(1)
-                    
+
                     Label {
                         text: i18n.tr("Quality")
                         font.bold: true
                         width: parent.width
                         color: ThemeManager.textPrimary
                     }
-                    
+
                     ListView {
                         id: qualityList
                         width: parent.width
                         height: parent.height - units.gu(5)
                         clip: true
                         model: availableQualities
-                        
+                        interactive: true  // Enable scrolling
+                        boundsBehavior: Flickable.StopAtBounds
+
                         delegate: Rectangle {
                             width: qualityList.width
                             height: units.gu(5)
                             color: currentQuality === model.name ? ThemeManager.accentColor : "transparent"
-                            
+
                             Label {
                                 anchors {
                                     left: parent.left
@@ -612,11 +643,11 @@ Item {
                                 text: model.name
                                 color: currentQuality === model.name ? "white" : ThemeManager.textPrimary
                             }
-                            
+
                             MouseArea {
                                 anchors.fill: parent
                                 onClicked: {
-                                                    switchQuality(model.name)
+                                    switchQuality(model.name)
                                     qualityPopup.visible = false
                                     showControlsTemporarily()
                                 }
@@ -724,12 +755,16 @@ Item {
         }
     }
     
-    // Auto-hide timer
+    // Auto-hide timer - FIXED: Don't hide when quality popup is open
     Timer {
         id: hideControlsTimer
         interval: 3000
         repeat: false
-        onTriggered: hideControls()
+        onTriggered: {
+            if (!qualityPopup.visible) {
+                hideControls()
+            }
+        }
     }
     
     // Reset swipe animation
@@ -770,8 +805,11 @@ Item {
     }
     
     function hideControls() {
+        // Don't hide controls if quality popup is open
+        if (qualityPopup.visible) {
+            return
+        }
         controlsOverlay.opacity = 0
-        qualityPopup.visible = false
     }
     
     function showControlsTemporarily() {
@@ -957,10 +995,21 @@ Item {
         
         onStreamUrlReady: {
             if (channelName === playerPage.channelName) {
-                        currentStreamUrl = url
+                currentStreamUrl = url
                 statusLabel.text = "Starting playback..."
                 videoPlayer.source = url
                 videoPlayer.play()
+
+                // Find and set the current quality based on the URL
+                for (var i = 0; i < availableQualities.count; i++) {
+                    var qualityName = availableQualities.get(i).name
+                    var qualityUrl = twitchFetcher.getQualityUrl(qualityName)
+                    if (qualityUrl === url) {
+                        currentQuality = qualityName
+                        break
+                    }
+                }
+
                 if (!isMiniMode) {
                     showControlsTemporarily()
                 }
@@ -968,15 +1017,38 @@ Item {
         }
         
         onAvailableQualitiesChanged: {
-                availableQualities.clear()
-            
-            for (var i = 0; i < qualities.length; i++) {
-                availableQualities.append({ name: qualities[i] })
+            availableQualities.clear()
+
+            // Helper function to extract resolution number (e.g., "1080p60" -> 1080)
+            function getResolution(qualityName) {
+                var match = qualityName.match(/(\d+)p/)
+                return match ? parseInt(match[1]) : 0
             }
-            
-            if (qualities.length > 0) {
-                currentQuality = qualities[0]
+
+            // Sort qualities by resolution (highest first)
+            var sortedQualities = qualities.slice().sort(function(a, b) {
+                var resA = getResolution(a)
+                var resB = getResolution(b)
+
+                // Sort by resolution descending
+                if (resB !== resA) {
+                    return resB - resA
+                }
+
+                // If same resolution, prefer non-60fps version
+                var aHas60 = a.indexOf("60") >= 0
+                var bHas60 = b.indexOf("60") >= 0
+                if (aHas60 && !bHas60) return 1
+                if (!aHas60 && bHas60) return -1
+
+                return 0
+            })
+
+            for (var i = 0; i < sortedQualities.length; i++) {
+                availableQualities.append({ name: sortedQualities[i] })
             }
+
+            // Don't auto-change currentQuality here - it's set when stream starts
         }
         
         onError: {
