@@ -33,35 +33,49 @@ A native Twitch client for Ubuntu Touch devices, allowing you to watch live stre
 ## Features
 
 - Browse and search for live Twitch channels
-- View your followed channels (with authentication)
-- Watch live streams with quality selection
+- **Secure OAuth login** using Twitch's Device Authorization Flow
+- View your followed channels (when logged in)
+- Watch live streams with quality selection (Auto, 1080p60, 720p60, 480p, 360p, 160p)
+- Optional: Ad-free playback for Turbo/Subscriber users (Streamlink-based)
 - Adaptive UI for both portrait and landscape modes
 - Support for phones and tablets
 - Pull-to-refresh for channel lists
 - Native performance with Qt/QML
 
-## How Stream Links Work
+## Authentication & Privacy
 
-This app retrieves ad-free media links using a method inspired by the [Streamlink](https://github.com/streamlink/streamlink) library. Instead of using Twitch's official OAuth app authentication (which requires a registered developer application), the app:
+### OAuth Login
 
-1. Uses Twitch's public client ID to access basic API endpoints
-2. For authenticated features, accepts user-provided OAuth tokens
+The app uses a **registered Twitch Developer Application** with the official Device Authorization Flow. This means:
 
-### Important Security Notice
+- Completely secure and official Twitch authentication
+- No third-party services involved
+- You log in directly through Twitch's website
+- Your credentials never pass through the app
+- Standard OAuth 2.0 Device Flow (same as used by TV apps)
 
-**If you choose to provide your own OAuth token:**
+### Ad-Free Stream Access (Advanced)
 
-- You do so at your own risk
-- The token provides full access to your Twitch account
-- The app stores the token locally on your device
-- Never share your token with others
-- You can revoke tokens anytime at https://www.twitch.tv/settings/connections
+For users with **Twitch Turbo** or **channel subscriptions**, the app optionally supports authenticated playback using a method inspired by [Streamlink](https://github.com/streamlink/streamlink):
 
-**Why this approach?**
+**How it works:**
+1. Streamlink uses authenticated tokens to access ad-free stream variants
+2. This requires manually providing an authentication token
+3. The token is used only for media URL generation
+4. Stored locally on your device
 
-Twitch's OAuth system requires a registered redirect URL, which is challenging for native mobile apps without a backend service. Due to the lack of alternative solutions for native Ubuntu Touch apps, user-provided tokens remain the most practical option for authenticated features.
+**Important Security Notice:**
 
-**Alternative:** You can use the app without authentication to browse and watch streams without logging in.
+This advanced feature is **completely optional** and separate from the OAuth login:
+
+- Only needed if you want ad-free playback with Turbo/Subs
+- Requires manual token setup (instructions in Settings)
+- You provide the token at your own risk
+- Token gives full account access - handle with care
+- Can be revoked anytime at https://www.twitch.tv/settings/connections
+- Not required for normal app functionality
+
+**For most users:** The standard OAuth login is sufficient and recommended.
 
 ## Installation
 
@@ -144,23 +158,46 @@ cp config.cpp.example config.cpp
 - Choose from available quality options (Auto, 1080p60, 720p60, 480p, 360p, 160p)
 - The player will switch quality without interrupting playback
 
-### Authentication (Optional)
+### Authentication
 
-To access your followed channels:
+#### OAuth Login (Recommended)
 
-1. Get your OAuth token from Twitch
-2. Go to Settings in the app
-3. Enter your OAuth token
-4. Access the "Followed" tab
+The app includes a secure OAuth login using Twitch's Device Authorization Flow:
 
-**Obtaining an OAuth Token:**
-- Visit https://twitchtokengenerator.com or similar services
-- Generate a token with `user:read:follows` scope
-- Copy and paste into the app settings
+1. Open the app and go to Settings
+2. Tap "Login with Twitch"
+3. You'll be redirected to Twitch in your browser
+4. Log in and authorize the app
+5. Return to the app - you're now logged in!
+
+This allows you to:
+- Access your followed channels
+- See personalized recommendations
+- No manual token handling required
+- Completely secure (official Twitch OAuth)
 
 **Revoking Access:**
 - Visit https://www.twitch.tv/settings/connections
 - Remove "TwitchViewer" from authorized apps
+
+#### Advanced: Authentication Token for Ad-Free Streams (Optional)
+
+**Only needed if you have Twitch Turbo or channel subscriptions and want ad-free playback.**
+
+This uses a method inspired by [Streamlink](https://github.com/streamlink/streamlink) to access authenticated media links:
+
+1. Go to Settings → "Ad-Free Playback"
+2. Follow the in-app instructions to obtain an auth token
+3. Enter the token in the app
+
+**Important Security Notice:**
+- This token provides full access to your Twitch account
+- You use this at your own risk
+- The token is stored locally on your device
+- Only use this feature if you understand the implications
+- This is separate from the OAuth login and not required for normal use
+
+For detailed instructions, see the [Streamlink documentation](https://streamlink.github.io/cli/plugins/twitch.html#authentication)
 
 ## Technology Stack
 
@@ -174,7 +211,7 @@ To access your followed channels:
 
 - Chat integration is not yet implemented
 - Some streams may require specific quality settings on older devices
-- OAuth token must be manually entered (no automatic login flow)
+- Ad-free auth token (for Turbo/Subs) must be manually entered
 
 ## Contributing
 
