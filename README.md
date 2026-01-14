@@ -248,11 +248,22 @@ You should have received a copy of the GNU General Public License along with thi
 - Email: dev@bussemas.me
 - GitHub Issues: https://github.com/KallistoX/twitchviewer/issues
 
+## Development
+
+This app was developed with the assistance of AI (Claude by Anthropic), which helped with:
+- Code architecture and implementation
+- Qt/QML best practices
+- Ubuntu Touch platform integration
+- Documentation and release preparation
+
+While AI assisted in the development process, all code has been reviewed, tested, and maintained by the project maintainer.
+
 ## Acknowledgments
 
 - Inspired by [Streamlink](https://github.com/streamlink/streamlink)
 - Built with [Clickable](https://clickable-ut.dev/)
 - Thanks to the Ubuntu Touch community
+- Developed with assistance from [Claude](https://claude.ai) by Anthropic
 
 ## Disclaimer
 
