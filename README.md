@@ -5,7 +5,7 @@ A native Twitch client for Ubuntu Touch devices, allowing you to watch live stre
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
 ![Ubuntu Touch](https://img.shields.io/badge/platform-Ubuntu%20Touch-orange.svg)
 
-<a href="https://next.open-store.io/app/twitchviewer.kallisto-app/">
+<a href="https://next.open-store.io/app/twitchviewer.kallisto-app/" target=_blank>
   <img src="https://next.open-store.io/badges/en_US.svg" height="50" alt="OpenStore">
 </a>
 
