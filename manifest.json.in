@@ -3,14 +3,14 @@
     "description": "A small App to view Twitch Streams",
     "architecture": "@CLICK_ARCH@",
     "title": "TwitchViewer",
-    "icon": "icon.png",
+    "icon": "assets/logo.svg",
     "hooks": {
         "twitchviewer": {
             "apparmor": "twitchviewer.apparmor",
             "desktop":  "twitchviewer.desktop"
         }
     },
-    "version": "1.0.1",
+    "version": "1.0.2",
     "maintainer": "Dominic Bussemas <dev@bussemas.me>",
     "framework" : "@CLICK_FRAMEWORK@"
 }
