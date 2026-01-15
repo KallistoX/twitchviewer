@@ -913,8 +913,174 @@ void TwitchStreamFetcher::onTopCategoriesReceived()
             categories.append(category);
         }
     }
-    
+
+    // Report successful network request
+    if (m_netStatusManager) {
+        m_netStatusManager->reportSuccess();
+    }
+
     emit topCategoriesReceived(categories);
+}
+
+// ========================================
+// Streams for Game (GraphQL - Anonymous)
+// ========================================
+
+void TwitchStreamFetcher::fetchStreamsForGameGraphQL(const QString &gameId, int limit)
+{
+
+    // Clamp limit
+    if (limit > 100) limit = 100;
+    if (limit < 1) limit = 1;
+
+    requestStreamsForGame(gameId, limit);
+}
+
+void TwitchStreamFetcher::requestStreamsForGame(const QString &gameId, int limit)
+{
+    QUrl url(TWITCH_GQL_URL);
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    // CRITICAL: Use public Client-ID, NO auth token (anonymous)
+    request.setRawHeader("Client-ID", Config::TWITCH_PUBLIC_CLIENT_ID.toUtf8());
+
+    // Build GraphQL query for streams by game ID
+    // Using a direct query since we don't have the persisted query hash
+    QString query = QString(
+        "query { "
+        "  game(id: \"%1\") { "
+        "    id "
+        "    name "
+        "    streams(first: %2) { "
+        "      edges { "
+        "        node { "
+        "          id "
+        "          title "
+        "          viewersCount "
+        "          previewImageURL(width: 440, height: 248) "
+        "          broadcaster { "
+        "            id "
+        "            login "
+        "            displayName "
+        "          } "
+        "        } "
+        "      } "
+        "    } "
+        "  } "
+        "}"
+    ).arg(gameId).arg(limit);
+
+    QJsonObject payload;
+    payload["query"] = query;
+
+    QJsonDocument doc(payload);
+    QByteArray data = doc.toJson(QJsonDocument::Compact);
+
+
+    QNetworkReply *reply = m_networkManager->post(request, data);
+    setupRequestTimeout(reply);
+    connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onStreamsForGameReceived);
+}
+
+void TwitchStreamFetcher::onStreamsForGameReceived()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+
+    reply->deleteLater();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        if (m_netStatusManager) {
+            NetworkManager::ErrorType errorType = m_netStatusManager->classifyError(reply);
+            QString errorMsg = m_netStatusManager->getErrorMessage(reply);
+
+            if (errorType == NetworkManager::NetworkError) {
+                m_netStatusManager->reportError(errorType);
+                emit error(errorMsg);
+                return;
+            }
+
+            if (errorType == NetworkManager::ServerError) {
+                emit error(errorMsg);
+                return;
+            }
+
+            // For auth errors or other errors, continue with existing logic
+            WARN_STREAM("API error:" << errorMsg);
+            emit error(errorMsg);
+            return;
+        }
+        WARN_STREAM("Failed to fetch streams for game:" << reply->errorString());
+        QByteArray errorBody = reply->readAll();
+        if (!errorBody.isEmpty()) {
+
+        }
+        emit error("Failed to load streams: " + reply->errorString());
+        return;
+    }
+
+    QByteArray responseData = reply->readAll();
+
+    QJsonDocument doc = QJsonDocument::fromJson(responseData);
+
+    if (doc.isNull() || !doc.isObject()) {
+        emit error("Invalid JSON response for streams");
+        return;
+    }
+
+    QJsonObject root = doc.object();
+
+    // Check for errors
+    if (root.contains("errors")) {
+        QJsonArray errors = root["errors"].toArray();
+        if (!errors.isEmpty()) {
+            QString errorMsg = errors[0].toObject()["message"].toString();
+            WARN_STREAM("GraphQL error:" << errorMsg);
+            emit error("Failed to fetch streams: " + errorMsg);
+            return;
+        }
+    }
+
+    // Navigate to game -> streams -> edges
+    QJsonObject data = root["data"].toObject();
+    QJsonObject game = data["game"].toObject();
+
+    if (game.isEmpty()) {
+        WARN_STREAM("Game not found or has no data");
+        emit error("Game not found");
+        return;
+    }
+
+    QJsonObject streams = game["streams"].toObject();
+    QJsonArray edges = streams["edges"].toArray();
+
+    // Report successful network request
+    if (m_netStatusManager) {
+        m_netStatusManager->reportSuccess();
+    }
+
+    // Transform edges to simpler format compatible with Helix API format
+    QJsonArray streamsList;
+    for (const QJsonValue &edgeValue : edges) {
+        QJsonObject edge = edgeValue.toObject();
+        QJsonObject node = edge["node"].toObject();
+        QJsonObject broadcaster = node["broadcaster"].toObject();
+
+        // Create stream object in Helix-compatible format
+        QJsonObject stream;
+        stream["id"] = node["id"];
+        stream["user_id"] = broadcaster["id"];
+        stream["user_login"] = broadcaster["login"];
+        stream["user_name"] = broadcaster["displayName"];
+        stream["title"] = node["title"];
+        stream["viewer_count"] = node["viewersCount"];
+        stream["thumbnail_url"] = node["previewImageURL"];
+
+        streamsList.append(stream);
+    }
+
+    emit streamsForGameReceived(streamsList);
 }
 
 // ========================================
@@ -972,23 +1138,41 @@ void TwitchStreamFetcher::requestUserInfo()
 
 void TwitchStreamFetcher::requestUserDetails(const QString &userId)
 {
-    // Use Twitch Helix REST API
-    QUrl url(QString("https://api.twitch.tv/helix/users?id=%1").arg(userId));
-    QNetworkRequest request(url);
-    
-    // CRITICAL FIX: Use correct Client-ID based on token source
-    QString token;
-    QString clientId;
-    
+    // CRITICAL: Helix API requires OAuth token, NOT GraphQL token!
+    // If we only have a GraphQL token, skip this step (we already have basic info from GraphQL)
+
     if (m_authManager && m_authManager->isAuthenticated()) {
-        // OAuth token -> use our custom Client-ID
-        token = m_authManager->accessToken();
-        clientId = Config::TWITCH_CLIENT_ID;
-        } else if (!m_graphQLToken.isEmpty()) {
-        // GraphQL token -> use public Client-ID
-        token = m_graphQLToken;
-        clientId = Config::TWITCH_PUBLIC_CLIENT_ID;
-        } else {
+        // OAuth token available -> use Helix API for full details
+        QUrl url(QString("https://api.twitch.tv/helix/users?id=%1").arg(userId));
+        QNetworkRequest request(url);
+
+        QString token = m_authManager->accessToken();
+        QString clientId = Config::TWITCH_CLIENT_ID;
+
+        request.setRawHeader("Client-ID", clientId.toUtf8());
+        request.setRawHeader("Authorization", QString("Bearer %1").arg(token).toUtf8());
+
+
+        QNetworkReply *reply = m_networkManager->get(request);
+        setupRequestTimeout(reply);
+
+        // Mark as second step
+        reply->setProperty("isFirstStep", false);
+
+        connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onUserInfoReceived);
+    } else if (!m_graphQLToken.isEmpty()) {
+        // Only have GraphQL token -> Helix API won't work
+        // Just emit with what we have from GraphQL (step 1)
+        LOG_STREAM("Skipping Helix user details (only have GraphQL token, no OAuth)");
+
+        if (m_isValidatingToken) {
+            m_isValidatingToken = false;
+            emit validatingTokenChanged();
+            emit tokenValidationSuccess("GraphQL token is valid");
+        }
+
+        emit currentUserChanged();
+    } else {
         WARN_STREAM("No token for user info");
         if (m_isValidatingToken) {
             m_isValidatingToken = false;
@@ -997,18 +1181,6 @@ void TwitchStreamFetcher::requestUserDetails(const QString &userId)
         }
         return;
     }
-    
-    request.setRawHeader("Client-ID", clientId.toUtf8());
-    request.setRawHeader("Authorization", QString("Bearer %1").arg(token).toUtf8());
-    
-    
-    QNetworkReply *reply = m_networkManager->get(request);
-    setupRequestTimeout(reply);
-    
-    // Mark as second step
-    reply->setProperty("isFirstStep", false);
-    
-    connect(reply, &QNetworkReply::finished, this, &TwitchStreamFetcher::onUserInfoReceived);
 }
 
 void TwitchStreamFetcher::onUserInfoReceived()

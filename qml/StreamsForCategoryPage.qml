@@ -260,7 +260,14 @@ Page {
     function refreshStreams() {
         isRefreshing = true
         paginationCursor = ""
-        helixApi.getStreamsForGame(categoryId, 20)
+
+        // Use GraphQL for anonymous requests (no auth required)
+        // Use Helix API for authenticated requests (better pagination)
+        if (authManager.isAuthenticated) {
+            helixApi.getStreamsForGame(categoryId, 20)
+        } else {
+            twitchFetcher.fetchStreamsForGameGraphQL(categoryId, 20)
+        }
     }
     
     function loadMoreStreams() {
@@ -360,8 +367,50 @@ Page {
                 }
         
         onError: {
-                isRefreshing = false
+            isRefreshing = false
             isLoadingMore = false
+        }
+    }
+
+    // Connections - TwitchStreamFetcher (GraphQL - anonymous)
+    Connections {
+        target: twitchFetcher
+        ignoreUnknownSignals: true
+
+        onStreamsForGameReceived: {
+
+            // Clear model for refresh
+            if (isRefreshing) {
+                streamsModel.clear()
+            }
+
+            for (var i = 0; i < streams.length; i++) {
+                var stream = streams[i]
+
+                var thumbnailUrl = stream.thumbnail_url
+                // GraphQL already returns full URL, no need to replace placeholders
+
+                var viewerCount = stream.viewer_count
+                var viewerCountFormatted = viewerCount >= 1000 ?
+                    (viewerCount / 1000).toFixed(1) + "K" :
+                    viewerCount.toString()
+
+                streamsModel.append({
+                    userLogin: stream.user_login,
+                    userName: stream.user_name,
+                    title: stream.title,
+                    viewerCount: viewerCount,
+                    viewerCountFormatted: viewerCountFormatted,
+                    thumbnailUrl: thumbnailUrl
+                })
+            }
+
+            isRefreshing = false
+            isLoadingMore = false
+
+            // GraphQL doesn't support pagination in this simple query
+            // so disable "Load More" button
+            hasMorePages = false
         }
     }
 }

@@ -84,7 +84,10 @@
      
      // Fetch top categories using GraphQL (anonymous, no auth required)
      Q_INVOKABLE void fetchTopCategoriesGraphQL(int limit = 30);
-     
+
+     // Fetch streams for a specific game/category using GraphQL (anonymous, no auth required)
+     Q_INVOKABLE void fetchStreamsForGameGraphQL(const QString &gameId, int limit = 20);
+
      // User Info property getters
      QString currentUserId() const { return m_currentUserId; }
      QString currentUserLogin() const { return m_currentUserLogin; }
@@ -138,6 +141,9 @@
  
      // Emitted when top categories are received (GraphQL)
      void topCategoriesReceived(const QJsonArray &categories);
+
+     // Emitted when streams for a game are received (GraphQL)
+     void streamsForGameReceived(const QJsonArray &streams);
  
  private slots:
      // Handle GraphQL response
@@ -157,6 +163,9 @@
  
      // Handle top categories response (BrowsePage_AllDirectories query)
      void onTopCategoriesReceived();
+
+     // Handle streams for game response (DirectoryPage_Game query)
+     void onStreamsForGameReceived();
 
      // Handle request timeout
      void onRequestTimeout();
@@ -222,6 +231,7 @@
      void requestUserInfo();
      void requestUserDetails(const QString &userId);
      void requestTopCategories(int limit);
+     void requestStreamsForGame(const QString &gameId, int limit);
      QString parseM3U8Playlist(const QString &m3u8Content, const QString &quality);
      QString extractUrlFromM3U8(const QString &m3u8Content, const QString &resolution);
      void parseDebugInfo(const QString &tokenValue);
