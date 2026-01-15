@@ -10,7 +10,7 @@
             "desktop":  "twitchviewer.desktop"
         }
     },
-    "version": "1.0.2",
+    "version": "1.0.3",
     "maintainer": "Dominic Bussemas <dev@bussemas.me>",
     "framework" : "@CLICK_FRAMEWORK@"
 }
