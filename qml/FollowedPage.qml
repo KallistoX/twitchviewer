@@ -324,11 +324,25 @@ Page {
     Connections {
         target: twitchFetcher
         ignoreUnknownSignals: true
-        
+
         onCurrentUserChanged: {
             // When user info is loaded, fetch followed streams
-            if (twitchFetcher.hasUserInfo && followedModel.count === 0) {
-                        refreshFollowed()
+            // Always refresh when user info changes (login/token refresh)
+            if (twitchFetcher.hasUserInfo && authManager.isAuthenticated) {
+                refreshFollowed()
+            }
+        }
+    }
+
+    Connections {
+        target: authManager
+        ignoreUnknownSignals: true
+
+        onAuthenticationChanged: {
+            if (!authenticated) {
+                // User logged out, clear the followed streams list
+                followedModel.clear()
+                isRefreshing = false
             }
         }
     }
