@@ -233,7 +233,6 @@
      void requestTopCategories(int limit);
      void requestStreamsForGame(const QString &gameId, int limit);
      QString parseM3U8Playlist(const QString &m3u8Content, const QString &quality);
-     QString extractUrlFromM3U8(const QString &m3u8Content, const QString &resolution);
      void parseDebugInfo(const QString &tokenValue);
      
      // Client-Integrity helpers

@@ -114,12 +114,6 @@ MainView {
         target: networkManager
         ignoreUnknownSignals: true
 
-        onOnlineStatusChanged: {
-                }
-
-        onActiveErrorChanged: {
-                }
-
         onConnectionRestored: {
 
             // Retry failed operations
@@ -157,9 +151,6 @@ MainView {
                 root,
                 "connectionRestoredLabel"
             )
-        }
-        
-        onConnectionLost: {
         }
     }
 

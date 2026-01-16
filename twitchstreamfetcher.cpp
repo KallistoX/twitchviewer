@@ -141,9 +141,6 @@ void TwitchStreamFetcher::clearGraphQLToken()
         
      m_graphQLToken = m_settings->value("auth/graphql_token").toString();
      
-     if (!m_graphQLToken.isEmpty()) {
-      } else {
-      }
  }
  
  void TwitchStreamFetcher::saveGraphQLToken()
@@ -187,8 +184,6 @@ void TwitchStreamFetcher::clearGraphQLToken()
       } else if (m_authManager && m_authManager->isAuthenticated()) {
          // Fallback to OAuth token (probably won't work for ad-free, but try anyway)
          request.setRawHeader("Authorization", QString("OAuth %1").arg(m_authManager->accessToken()).toUtf8());
-      } else {
-      }
      
      // Add Client-Integrity token if available and requested
      if (withIntegrity && !m_clientIntegrityToken.isEmpty()) {
@@ -726,36 +721,6 @@ QString TwitchStreamFetcher::getQualityUrl(const QString &quality) const
     
     return QString();
 }
- 
- QString TwitchStreamFetcher::extractUrlFromM3U8(const QString &m3u8Content, const QString &resolution)
- {
-     QStringList lines = m3u8Content.split('\n');
-     
-     for (int i = 0; i < lines.size(); i++) {
-         QString line = lines[i].trimmed();
-         
-         if (line.startsWith("#EXT-X-STREAM-INF")) {
-             // Check if this line contains our desired resolution
-             if (line.contains(resolution, Qt::CaseInsensitive) || 
-                 line.contains("RESOLUTION=1920x1080") && resolution.contains("1080") ||
-                 line.contains("RESOLUTION=1280x720") && resolution.contains("720") ||
-                 line.contains("RESOLUTION=852x480") && resolution.contains("480") ||
-                 line.contains("RESOLUTION=640x360") && resolution.contains("360") ||
-                 line.contains("RESOLUTION=284x160") && resolution.contains("160")) {
-                 
-                 // Next line should be the URL
-                 if (i + 1 < lines.size()) {
-                     QString nextLine = lines[i + 1].trimmed();
-                     if (nextLine.startsWith("http")) {
-                                      return nextLine;
-                     }
-                 }
-             }
-         }
-     }
-     
-     return QString();
- }
 
 // ========================================
 // Top Categories (GraphQL - Anonymous)
