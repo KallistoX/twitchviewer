@@ -15,15 +15,15 @@
  */
 
  #include "twitchstreamfetcher.h"
-#include "logging.h"
- #include "twitchauthmanager.h"
- #include "config.h"
+#include "src/core/logging.h"
+ #include "src/auth/twitchauthmanager.h"
+ #include "src/core/config.h"
  #include <QNetworkRequest>
  #include <QUrlQuery>
  #include <QUrl>
   #include <QStandardPaths>
  #include <QDir>
- #include "networkmanager.h" 
+ #include "src/network/networkmanager.h" 
  
  // Twitch API Constants
  const QString TwitchStreamFetcher::TWITCH_GQL_URL = "https://gql.twitch.tv/gql";
@@ -185,6 +185,7 @@ void TwitchStreamFetcher::clearGraphQLToken()
          // Fallback to OAuth token (probably won't work for ad-free, but try anyway)
          request.setRawHeader("Authorization", QString("OAuth %1").arg(m_authManager->accessToken()).toUtf8());
      
+     }
      // Add Client-Integrity token if available and requested
      if (withIntegrity && !m_clientIntegrityToken.isEmpty()) {
          request.setRawHeader("Client-Integrity", m_clientIntegrityToken.toUtf8());

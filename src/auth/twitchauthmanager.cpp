@@ -15,8 +15,8 @@
  */
 
  #include "twitchauthmanager.h"
- #include "config.h"
- #include "logging.h"
+ #include "../core/config.h"
+ #include "../core/logging.h"
  #include <QNetworkRequest>
  #include <QUrlQuery>
  #include <QJsonDocument>
@@ -24,7 +24,7 @@
  #include <QJsonArray>
  #include <QStandardPaths>
  #include <QDir>
- #include "networkmanager.h"
+ #include "../network/networkmanager.h"
  
  // Twitch OAuth Device Flow endpoints
  const QString TwitchAuthManager::TWITCH_DEVICE_URL = "https://id.twitch.tv/oauth2/device";

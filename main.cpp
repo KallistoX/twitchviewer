@@ -21,10 +21,10 @@
 #include <QQuickView>
 #include <QQmlContext>
 #include "twitchstreamfetcher.h"
-#include "twitchauthmanager.h"
-#include "twitchhelixapi.h"
-#include "networkmanager.h"
-#include "logging.h"
+#include "src/auth/twitchauthmanager.h"
+#include "src/api/twitchhelixapi.h"
+#include "src/network/networkmanager.h"
+#include "src/core/logging.h"
 
 int main(int argc, char *argv[])
 {

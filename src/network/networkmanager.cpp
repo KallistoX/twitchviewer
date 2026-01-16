@@ -15,7 +15,7 @@
  */
 
 #include "networkmanager.h"
-#include "logging.h"
+#include "../core/logging.h"
 #include <QNetworkRequest>
 
 NetworkManager::NetworkManager(QObject *parent)

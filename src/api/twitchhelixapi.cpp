@@ -15,12 +15,12 @@
  */
 
 #include "twitchhelixapi.h"
-#include "config.h"
-#include "logging.h"
+#include "../core/config.h"
+#include "../core/logging.h"
 #include <QNetworkRequest>
 #include <QUrlQuery>
 #include <QUrl>
-#include "networkmanager.h"
+#include "../network/networkmanager.h"
 
 const QString TwitchHelixAPI::HELIX_BASE_URL = "https://api.twitch.tv/helix";
 

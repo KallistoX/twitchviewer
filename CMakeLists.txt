@@ -54,17 +54,17 @@ qt5_add_resources(QT_RESOURCES assets/assets.qrc)
 # Add source files
 set(PROJECT_SOURCES
     main.cpp
-    config.cpp
-    networkmanager.cpp
-    networkmanager.h
     twitchstreamfetcher.cpp
     twitchstreamfetcher.h
-    twitchauthmanager.cpp
-    twitchauthmanager.h
-    twitchhelixapi.cpp
-    twitchhelixapi.h
-    config.h
-    logging.h
+    src/auth/twitchauthmanager.cpp
+    src/auth/twitchauthmanager.h
+    src/api/twitchhelixapi.cpp
+    src/api/twitchhelixapi.h
+    src/network/networkmanager.cpp
+    src/network/networkmanager.h
+    src/core/config.cpp
+    src/core/config.h
+    src/core/logging.h
 )
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES} ${QT_RESOURCES})
