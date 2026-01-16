@@ -1,0 +1,48 @@
+# Claude Code Ignore File
+# Files and directories listed here will be excluded from Claude's access
+
+# Sensitive configuration files
+config.cpp
+
+# Environment files with secrets
+.env
+*.local
+
+# User settings that may contain tokens
+*.conf
+
+# Build artifacts (no need for Claude to read these)
+build/
+.clickable/
+*.click
+*.snap
+install/
+obj-*/
+
+# IDE settings
+.vscode/
+.idea/
+*.pro.user*
+
+# Generated files
+*.qmlc
+*.jsc
+*.moc
+moc_*.cpp
+qrc_*.cpp
+manifest.json
+*.desktop
+*.qm
+po/*.mo
+po/*.pot
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*_old
+*_backup
+
+# Dependencies
+node_modules/
+vendor/

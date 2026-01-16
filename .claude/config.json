@@ -1,0 +1,36 @@
+{
+  "project": {
+    "name": "TwitchViewer",
+    "description": "Twitch streaming app for Ubuntu Touch",
+    "platform": "Ubuntu Touch",
+    "language": "QML/C++"
+  },
+  "development": {
+    "branching_strategy": "feature_branches",
+    "base_branch": "main",
+    "branch_patterns": {
+      "feature": "feature/",
+      "fix": "fix/",
+      "docs": "docs/"
+    },
+    "main_branch_policy": "stable_only",
+    "workflow": "All new features and changes must be developed in separate feature branches"
+  },
+  "security": {
+    "sensitive_files": [
+      "config.cpp"
+    ],
+    "ignore_patterns": [
+      ".env",
+      "*.conf",
+      "*.local"
+    ]
+  },
+  "guidelines": [
+    "Main branch is always stable and production-ready",
+    "Develop all features in separate feature branches",
+    "Never access or suggest changes to config.cpp",
+    "Follow Qt/QML coding conventions",
+    "Test manually on Ubuntu Touch when possible"
+  ]
+}
